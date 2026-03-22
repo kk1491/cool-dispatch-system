@@ -1,0 +1,155 @@
+# ============================================================================
+# CoolDispatch 系统配置文件
+# 配置优先级：环境变量 > config.yaml > 代码默认值
+# ============================================================================
+
+# ---------- 基础环境 ----------
+
+# 应用运行环境，可选值：development / production
+# - development：开启 Gin 调试日志，Cookie 不强制 HTTPS
+# - production：自动开启 cookie_secure 和 enable_static
+# 对应环境变量：APP_ENV（也会读取 GIN_MODE）
+app_env: development
+
+# HTTP 服务监听端口
+# 对应环境变量：PORT
+port: "9102"
+
+# PostgreSQL 数据库连接字符串
+# 格式：postgres://用户名:密码@主机:端口/数据库名?sslmode=disable
+# 对应环境变量：DATABASE_URL
+database_url: postgres://postgres:postgres@localhost:9101/cool_dispatch?sslmode=disable
+
+# 前端开发服务器地址，用于 CORS 跨域白名单
+# 开发时通常是 Vite 的 http://localhost:5173
+# 生产环境设为实际前端域名
+# 对应环境变量：FRONTEND_ORIGIN
+frontend_origin: http://localhost:5173
+
+# 前端构建产物目录路径（相对于 server/ 目录）
+# 当 enable_static=true 时，后端会托管该目录下的静态文件
+# 对应环境变量：FRONTEND_DIST
+frontend_dist: ../dist/client
+
+# ---------- HTTP 服务器超时与限制 ----------
+
+# 读取请求头的超时时间（秒），防止慢连接长时间占用
+# 对应环境变量：HTTP_READ_HEADER_TIMEOUT_SECONDS
+http_read_header_timeout_seconds: 5
+
+# 读取完整请求体的超时时间（秒）
+# 对应环境变量：HTTP_READ_TIMEOUT_SECONDS
+http_read_timeout_seconds: 15
+
+# 写入响应体的超时时间（秒），包含处理时间
+# 对应环境变量：HTTP_WRITE_TIMEOUT_SECONDS
+http_write_timeout_seconds: 30
+
+# 空闲连接超时时间（秒），Keep-Alive 连接在此时间内无新请求则关闭
+# 对应环境变量：HTTP_IDLE_TIMEOUT_SECONDS
+http_idle_timeout_seconds: 60
+
+# 单请求 HTTP 头部大小上限（字节），默认 1MB
+# 防止超大 Header 攻击占用内存
+# 对应环境变量：HTTP_MAX_HEADER_BYTES
+http_max_header_bytes: 1048576
+
+# 普通 JSON 写接口（POST/PUT/PATCH）请求体大小上限（字节），默认 1MB
+# 包括预约、技师、客户等所有业务 API
+# 对应环境变量：MAX_JSON_BODY_BYTES
+max_json_body_bytes: 1048576
+
+# LINE Webhook 请求体大小上限（字节），默认 256KB
+# 独立于普通接口限制，避免匿名大包攻击
+# 对应环境变量：MAX_WEBHOOK_BODY_BYTES
+max_webhook_body_bytes: 262144
+
+# ---------- 启动行为开关 ----------
+
+# 是否在启动时自动执行 GORM 数据库表结构迁移
+# 注意：当前代码已改为无条件迁移，此配置暂时不影响实际行为
+# 对应环境变量：AUTO_MIGRATE
+auto_migrate: false
+
+# 是否在启动时初始化演示数据（技师、客户、预约等）
+# 仅首次部署或开发调试时开启，生产环境保持 false
+# 对应环境变量：SEED_DEMO_DATA
+seed_demo_data: false
+
+# 是否由后端托管前端静态文件（SPA）
+# production 环境自动开启；开发环境保持 false，前端走 Vite 代理
+# 对应环境变量：SERVE_STATIC
+enable_static: false
+
+# ---------- 管理员账号（每次启动无条件同步） ----------
+
+# 系统唯一管理员的显示名称
+# 每次启动自动同步到数据库，修改后重启即生效
+# 对应环境变量：SEED_ADMIN_NAME
+seed_admin_name: 管理員
+
+# 管理员登录手机号（同时作为登录唯一键）
+# 对应环境变量：SEED_ADMIN_PHONE
+seed_admin_phone: "0912345678"
+
+# 管理员登录密码（明文，启动时自动 bcrypt 哈希后写入数据库）
+# 修改后重启会自动更新密码并吊销所有旧令牌，强制重新登录
+# ⚠️ 敏感信息，生产环境建议用环境变量注入
+# 对应环境变量：SEED_ADMIN_PASSWORD
+seed_admin_password: sucuygu123ytfdyas
+
+# ---------- 演示数据技师密码 ----------
+
+# seed_demo_data=true 时，批量创建演示技师使用的统一密码
+# 仅 seed 阶段使用，后续可通过管理员 UI 为各技师独立设置密码
+# 对应环境变量：SEED_TECHNICIAN_PASSWORD
+seed_technician_password: idsuhfiug12y3uy
+
+# ---------- 开发默认师傅账号（每次启动无条件同步） ----------
+# 方便开发人员直接用该账号登录师傅端进行调试
+# 三项（名称、手机号、密码）全部配置时才生效，任一留空则跳过
+# 每次启动自动 upsert：存在则更新密码，不存在则新建
+
+# 开发默认师傅的显示名称
+# 对应环境变量：DEV_TECHNICIAN_NAME
+dev_technician_name: 测试师傅
+
+# 开发默认师傅的登录手机号
+# 对应环境变量：DEV_TECHNICIAN_PHONE
+dev_technician_phone: "0900000001"
+
+# 开发默认师傅的登录密码（明文，至少 8 位）
+# 对应环境变量：DEV_TECHNICIAN_PASSWORD
+dev_technician_password: dev12345678
+
+# ---------- LINE Webhook 集成 ----------
+
+# LINE Messaging API 的 Channel Secret
+# 从 LINE Developers Console → Basic settings → Channel secret 获取
+# 用于 HMAC-SHA256 校验 webhook 请求签名，防止伪造请求
+# 留空表示未配置，此时 webhook 接口会返回 500
+# ⚠️ 敏感信息，生产环境建议用环境变量注入
+# 对应环境变量：LINE_CHANNEL_SECRET
+line_channel_secret: ""
+
+# Webhook 公网基址（不含路径部分）
+# 系统自动拼接 /api/webhook/line 生成完整回调地址
+# 示例：https://dispatch.example.com
+# 留空时系统会依次尝试 frontend_origin 或回退到 localhost
+# 对应环境变量：WEBHOOK_PUBLIC_BASE_URL
+webhook_public_base_url: ""
+
+# ---------- Cookie 安全策略 ----------
+
+# 是否只在 HTTPS 连接上传输认证 Cookie
+# 生产环境（HTTPS 部署）必须设为 true
+# 本地开发（HTTP）保持 false，否则浏览器不会携带 Cookie
+# 对应环境变量：COOKIE_SECURE
+cookie_secure: false
+
+# Cookie 的 SameSite 策略，可选值：lax / strict / none
+# - lax（推荐）：允许顶级导航携带 Cookie，兼顾安全与可用性
+# - strict：所有跨站请求都不携带 Cookie
+# - none：允许跨站携带 Cookie（必须配合 cookie_secure=true）
+# 对应环境变量：COOKIE_SAME_SITE
+cookie_same_site: lax

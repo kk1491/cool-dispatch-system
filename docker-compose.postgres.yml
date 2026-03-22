@@ -1,0 +1,24 @@
+services:
+  # PostgreSQL 仅负责本地开发与单机部署的数据库容器，不承载应用服务。
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    container_name: ${POSTGRES_CONTAINER_NAME:-cool-dispatch-postgres}
+    restart: unless-stopped
+    environment:
+      # 这里直接复用脚本注入的变量，避免数据库名、账号与应用连接串不一致。
+      POSTGRES_DB: ${POSTGRES_DB:-cool_dispatch}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      # 宿主机端口与容器端口都支持覆盖，便于与现有数据库实例错峰部署。
+      - "${POSTGRES_PORT:-9101}:${POSTGRES_CONTAINER_PORT:-5432}"
+    volumes:
+      # 宿主机数据目录通过环境变量指定，本地与 Ubuntu 服务器可使用不同路径。
+      - ${POSTGRES_DATA_DIR:-./.data/postgresql}:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-cool_dispatch}
+      interval: 10s
+      timeout: 5s
+      retries: 5

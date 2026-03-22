@@ -1,0 +1,15 @@
+node_modules
+dist
+.data
+.cache
+.DS_Store
+server/public
+server/api
+vite.config.ts.*
+*.tar.gz
+.claude/
+attached_assets/
+.gemini/
+*.md
+!README.md
+output/

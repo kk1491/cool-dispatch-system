@@ -1,0 +1,48 @@
+modules = ["nodejs-20", "web", "postgresql-16"]
+run = "bash -lc 'cd server && APP_ENV=development PORT=9102 HOME=../.cache/home GOCACHE=../.cache/go-build GOMODCACHE=../.cache/go-mod GOPATH=../.cache/go-path go run ./cmd/api & cd ../client && npm install && npm run dev -- --host 0.0.0.0 --port 5173'"
+hidden = [".config", ".git", "generated-icon.png", "node_modules", "client/node_modules", "dist", ".cache", ".data"]
+
+[nix]
+channel = "stable-24_05"
+packages = ["unzip", "go"]
+
+[[ports]]
+localPort = 5173
+externalPort = 80
+
+[[ports]]
+localPort = 9102
+externalPort = 3002
+
+[env]
+# Replit 开发态直接启动 Go API + Vite；数据库连接优先使用平台注入的 DATABASE_URL。
+PORT = "9102"
+FRONTEND_ORIGIN = "http://localhost:5173"
+
+[deployment]
+deploymentTarget = "autoscale"
+# 部署阶段先构建前端产物，再编译 Go API 二进制；运行时由 Go 统一托管 `dist/client`。
+build = ["bash", "-lc", "npm install --prefix client && cd client && npm run build && cd ../server && HOME=../.cache/home GOCACHE=../.cache/go-build GOMODCACHE=../.cache/go-mod GOPATH=../.cache/go-path go build -o ../dist/server/api ./cmd/api"]
+run = ["bash", "-lc", "APP_ENV=production PORT=5000 FRONTEND_DIST=dist/client ./dist/server/api"]
+publicDir = "dist/client"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash -lc 'cd server && APP_ENV=development PORT=9102 HOME=../.cache/home GOCACHE=../.cache/go-build GOMODCACHE=../.cache/go-mod GOPATH=../.cache/go-path go run ./cmd/api & cd ../client && npm install && npm run dev -- --host 0.0.0.0 --port 5173'"
+waitForPort = 5173
