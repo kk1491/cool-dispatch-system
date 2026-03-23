@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"cool-dispatch/internal/config"
+	"cool-dispatch/internal/logger"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -20,7 +21,9 @@ func NewRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 	}
 
 	router := gin.New()
-	router.Use(gin.Logger(), gin.Recovery())
+	// 使用自定义日志中间件替代 gin.Logger() + gin.Recovery()，
+	// 请求日志按状态码分级写入 app.log（普通）/ error.log（错误）。
+	router.Use(logger.GinMiddleware(), logger.GinRecoveryMiddleware())
 	router.Use(corsMiddleware(cfg))
 	router.Use(requestBodyLimitMiddleware(cfg))
 
@@ -83,6 +86,13 @@ func NewRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 		authenticated.GET("/cash-ledger-data", handler.GetCashLedgerPageData)
 		authenticated.GET("/cash-ledger-page-data", handler.GetCashLedgerPageData)
 		authenticated.GET("/pages/cash-ledger", handler.GetCashLedgerPageData)
+
+		// ---------- 图片上传/删除（Cloudflare Images 图床） ----------
+		// 上传接口接收 multipart/form-data，不受 requestBodyLimitMiddleware 的 1MB JSON 限制，
+		// 内部自行通过 MaxBytesReader 限制 10MB。
+		authenticated.POST("/upload/image", handler.UploadImage)
+		// 删除接口接收 JSON payload，从 URL 提取 Cloudflare 图片 ID 后远程删除。
+		authenticated.DELETE("/upload/image", handler.DeleteImage)
 	}
 
 	// 管理员接口统一在路由层做第一道授权门禁，避免仅靠前端隐藏按钮形成“假权限”。
@@ -130,6 +140,12 @@ func requestBodyLimitMiddleware(cfg config.Config) gin.HandlerFunc {
 		maxBytes := cfg.MaxJSONBodyBytes
 		if c.Request.URL.Path == "/api/webhook/line" {
 			maxBytes = cfg.MaxWebhookBodyBytes
+		}
+		// 图片上传接口使用 multipart/form-data，有自己的 10MB 限制，
+		// 不受此处 JSON 请求体上限约束。
+		if c.Request.URL.Path == "/api/upload/image" {
+			c.Next()
+			return
 		}
 		if maxBytes <= 0 {
 			c.Next()

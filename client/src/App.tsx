@@ -561,17 +561,14 @@ export default function App() {
           console.warn("GPS failed, proceeding without coordinates");
         }
       }
-      const now = new Date().toISOString();
+      // 所有业务关键时间戳（出发/签到/完工/结案时间）由后端服务器自动填充，
+      // 不依赖客户端本地时钟，避免时区偏差和手机时间不准的问题。
       const payload: Appointment = {
         ...target,
         ...patch,
         status,
         lat: lat ?? patch.lat ?? target.lat,
         lng: lng ?? patch.lng ?? target.lng,
-        checkin_time: status === 'arrived' ? (patch.checkin_time || target.checkin_time || now) : (patch.checkin_time ?? target.checkin_time),
-        checkout_time: status === 'completed' ? (patch.checkout_time || target.checkout_time || now) : (patch.checkout_time ?? target.checkout_time),
-        departed_time: status === 'arrived' ? (patch.departed_time || target.departed_time || now) : (patch.departed_time ?? target.departed_time),
-        completed_time: status === 'completed' ? (patch.completed_time || target.completed_time || now) : (patch.completed_time ?? target.completed_time),
       };
       const saved = await updateAppointment(target.id, toAppointmentUpdatePayload(payload));
       replaceAppointmentInState(saved);
@@ -602,7 +599,7 @@ export default function App() {
     const newAppt: AppointmentCreatePayload = {
       customer_name, address, phone,
       items: [...newApptItems],
-      extra_items: [...newApptExtraItems],
+      extra_items: newApptExtraItems.map(({ id, name, price }) => ({ id, name, price })),
       payment_method,
       discount_amount: newApptDiscount || 0,
       scheduled_at: createFormScheduledAt,

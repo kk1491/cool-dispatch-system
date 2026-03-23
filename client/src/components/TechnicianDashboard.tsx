@@ -38,6 +38,7 @@ import {
 } from '../lib/appointmentMetrics';
 import { Button, Card, Badge } from './shared';
 import { User, Appointment } from '../types';
+import { uploadImage, deleteImage } from '../lib/api';
 
 function SignaturePad({ onSave, initialData }: { onSave: (data: string) => void; initialData?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -410,19 +411,18 @@ function TaskDetail({ appt, onBack, onStatusUpdate, onUpdateAppointment, readonl
               data-testid="button-depart"
               className="w-full py-[14px] rounded-lg text-lg font-bold shadow-lg shadow-blue-200"
               onClick={async () => {
-                const departedAt = new Date().toISOString();
                 try {
                   const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
                     navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
                   });
+                  // 出发时间由后端服务器自动填充，不依赖客户端本地时钟
                   onStatusUpdate(appt, 'arrived', {
                     lat: pos.coords.latitude,
                     lng: pos.coords.longitude,
-                    departed_time: departedAt,
                   });
-                } catch (e) {
-                  console.warn('GPS failed');
-                  onStatusUpdate(appt, 'arrived', { departed_time: departedAt });
+                } catch {
+                  // 定位失败时仅做状态变更，出发时间仍由后端填充
+                  onStatusUpdate(appt, 'arrived', {});
                 }
                 toast.success('已出發，GPS 定位已記錄');
               }}
@@ -442,7 +442,13 @@ function TaskDetail({ appt, onBack, onStatusUpdate, onUpdateAppointment, readonl
                   <div key={i} className="relative w-24 h-24 flex-shrink-0">
                     <img src={p} className="w-full h-full object-cover rounded-lg" referrerPolicy="no-referrer" />
                     <button
-                      onClick={() => {
+                      onClick={async () => {
+                        // 删除图片时同步从 Cloudflare 图床移除
+                        try {
+                          await deleteImage(p);
+                        } catch (err) {
+                          console.warn('图床删除失败，已跳过:', err);
+                        }
                         onUpdateAppointment({ ...appt, photos: appt.photos?.filter((_, idx) => idx !== i) });
                       }}
                       className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md"
@@ -457,14 +463,19 @@ function TaskDetail({ appt, onBack, onStatusUpdate, onUpdateAppointment, readonl
                 >
                   <Camera className="w-6 h-6 text-slate-400" />
                   <span className="text-[10px] text-slate-500 mt-1">拍照上傳</span>
-                  <input type="file" className="hidden" accept="image/*" capture="environment" onChange={(e) => {
+                  <input type="file" className="hidden" accept="image/*" capture="environment" onChange={async (e) => {
                     const file = e.target.files?.[0];
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.onload = (ev) => {
-                        onUpdateAppointment({ ...appt, photos: [...(appt.photos || []), ev.target?.result as string] });
-                      };
-                      reader.readAsDataURL(file);
+                    if (!file) return;
+                    // 重置 input 值，允许重复选择同一文件
+                    e.target.value = '';
+                    try {
+                      toast.loading('正在上傳照片...', { id: 'photo-upload' });
+                      const result = await uploadImage(file);
+                      toast.success('照片上傳成功', { id: 'photo-upload' });
+                      onUpdateAppointment({ ...appt, photos: [...(appt.photos || []), result.url] });
+                    } catch (err) {
+                      console.error('图片上传失败:', err);
+                      toast.error('照片上傳失敗，請重試', { id: 'photo-upload' });
                     }
                   }} />
                 </label>
@@ -479,7 +490,8 @@ function TaskDetail({ appt, onBack, onStatusUpdate, onUpdateAppointment, readonl
               className="w-full py-[14px] rounded-lg text-lg font-bold bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-200"
               disabled={!appt.photos || appt.photos.length === 0}
               onClick={() => {
-                onStatusUpdate(appt, 'completed', { completed_time: new Date().toISOString() });
+                // completed_time 由后端服务器自动填充，不依赖客户端本地时钟
+                onStatusUpdate(appt, 'completed', {});
                 toast.success('清洗完成！');
               }}
             >

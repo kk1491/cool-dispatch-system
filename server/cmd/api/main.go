@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"log"
 	"net/http"
 	"path/filepath"
 	"runtime"
@@ -11,16 +10,28 @@ import (
 	"cool-dispatch/internal/config"
 	"cool-dispatch/internal/database"
 	"cool-dispatch/internal/httpapi"
+	"cool-dispatch/internal/logger"
 	"cool-dispatch/internal/seed"
 )
 
-// main 负责串联配置、数据库、种子数据与 HTTP 服务启动流程。
+// main 负责串联配置、日志、数据库、种子数据与 HTTP 服务启动流程。
 func main() {
 	cfg := config.Load()
 
+	// 初始化日志系统（必须在所有业务逻辑之前）。
+	// 日志文件默认存放在工作目录下的 logs/ 子目录：
+	// - logs/app.log   普通日志（INFO/WARN/DEBUG）
+	// - logs/error.log 错误日志（ERROR/FATAL）
+	logger.Init(logger.Config{
+		LogDir:     cfg.LogDir,
+		MaxSizeMB:  5,
+		MaxBackups: 2,
+	})
+	defer logger.Sync()
+
 	db, err := database.Open(cfg)
 	if err != nil {
-		log.Fatalf("database connection failed: %v", err)
+		logger.Fatalf("database connection failed: %v", err)
 	}
 
 	// 无条件执行数据库表结构迁移，确保新增字段、索引等变更在启动时自动同步，
@@ -30,25 +41,25 @@ func main() {
 	// 无条件同步 config.yaml 中的管理员账号配置到数据库
 	// 管理员更新不依赖 seed_demo_data 开关，确保配置变更后重启即生效
 	if err := seed.SyncAdminFromConfig(db, cfg); err != nil {
-		log.Fatalf("sync admin from config failed: %v", err)
+		logger.Fatalf("sync admin from config failed: %v", err)
 	}
 
 	// 无条件同步 config.yaml 中的开发默认师傅账号到数据库
 	// 保证开发人员始终有一个可直接登录的师傅端账号用于调试
 	if err := seed.SyncDevTechnicianFromConfig(db, cfg); err != nil {
-		log.Fatalf("sync dev technician from config failed: %v", err)
+		logger.Fatalf("sync dev technician from config failed: %v", err)
 	}
 
 	if cfg.SeedDemoData {
 		// 先执行 Go 代码内置的种子数据
 		if err := seed.SeedDemoData(db, cfg); err != nil {
-			log.Fatalf("seed failed: %v", err)
+			logger.Fatalf("seed failed: %v", err)
 		}
 
 		// 再执行 SQL 种子文件，支持通过 .sql 文件写入追加的默认数据
 		sqlSeedDir := resolveSQLSeedDir()
 		if err := seed.RunSQLSeedFiles(db, sqlSeedDir); err != nil {
-			log.Fatalf("sql seed failed: %v", err)
+			logger.Fatalf("sql seed failed: %v", err)
 		}
 	}
 
@@ -62,9 +73,9 @@ func main() {
 		IdleTimeout:       time.Duration(cfg.HTTPIdleTimeoutSeconds) * time.Second,
 		MaxHeaderBytes:    cfg.HTTPMaxHeaderBytes,
 	}
-	log.Printf("cool-dispatch api listening on :%s", cfg.Port)
+	logger.Infof("cool-dispatch api listening on :%s", cfg.Port)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatalf("server stopped: %v", err)
+		logger.Fatalf("server stopped: %v", err)
 	}
 }
 

@@ -154,3 +154,16 @@ cookie_secure: false
 # - none：允许跨站携带 Cookie（必须配合 cookie_secure=true）
 # 对应环境变量：COOKIE_SAME_SITE
 cookie_same_site: lax
+
+# ---------- Cloudflare Images 图床 ----------
+
+# Cloudflare 账户 ID，用于拼接 Images API 请求路径
+# 可在 Cloudflare Dashboard 右侧栏获取
+# 对应环境变量：CLOUDFLARE_ACCOUNT_ID
+cloudflare_account_id: ""
+
+# Cloudflare API Token，需具备 Images Write 权限
+# 从 Cloudflare Dashboard → API Tokens 创建
+# ⚠️ 敏感信息，生产环境建议用环境变量注入
+# 对应环境变量：CLOUDFLARE_API_TOKEN
+cloudflare_api_token: ""

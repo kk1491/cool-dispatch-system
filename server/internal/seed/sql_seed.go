@@ -2,11 +2,12 @@ package seed
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"cool-dispatch/internal/logger"
 
 	"gorm.io/gorm"
 )
@@ -19,7 +20,7 @@ func RunSQLSeedFiles(db *gorm.DB, dir string) error {
 	// 如果目录不存在，静默跳过（向下兼容）
 	info, err := os.Stat(dir)
 	if err != nil || !info.IsDir() {
-		log.Printf("[seed] SQL 种子目录不存在或非目录，跳过: %s", dir)
+		logger.Infof("[seed] SQL 种子目录不存在或非目录，跳过: %s", dir)
 		return nil
 	}
 
@@ -46,7 +47,7 @@ func RunSQLSeedFiles(db *gorm.DB, dir string) error {
 	}
 
 	if len(sqlFiles) == 0 {
-		log.Printf("[seed] 未找到种子 SQL 文件: %s", dir)
+		logger.Infof("[seed] 未找到种子 SQL 文件: %s", dir)
 		return nil
 	}
 
@@ -55,7 +56,7 @@ func RunSQLSeedFiles(db *gorm.DB, dir string) error {
 
 	for _, name := range sqlFiles {
 		filePath := filepath.Join(dir, name)
-		log.Printf("[seed] 正在执行 SQL 种子文件: %s", filePath)
+		logger.Infof("[seed] 正在执行 SQL 种子文件: %s", filePath)
 
 		content, err := os.ReadFile(filePath)
 		if err != nil {
@@ -64,7 +65,7 @@ func RunSQLSeedFiles(db *gorm.DB, dir string) error {
 
 		sql := strings.TrimSpace(string(content))
 		if sql == "" {
-			log.Printf("[seed] SQL 文件为空，跳过: %s", name)
+			logger.Infof("[seed] SQL 文件为空，跳过: %s", name)
 			continue
 		}
 
@@ -73,7 +74,7 @@ func RunSQLSeedFiles(db *gorm.DB, dir string) error {
 			return fmt.Errorf("exec sql file %s: %w", name, err)
 		}
 
-		log.Printf("[seed] SQL 种子文件执行成功: %s", name)
+		logger.Infof("[seed] SQL 种子文件执行成功: %s", name)
 	}
 
 	return nil

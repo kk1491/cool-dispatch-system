@@ -2,20 +2,20 @@ package database
 
 import (
 	"fmt"
-	"log"
 
 	"cool-dispatch/internal/config"
+	"cool-dispatch/internal/logger"
 	"cool-dispatch/internal/models"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 // Open 负责根据配置建立 GORM 连接，并设置基础连接池参数。
 func Open(cfg config.Config) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Warn),
+		Logger: gormlogger.Default.LogMode(gormlogger.Warn),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
@@ -40,6 +40,6 @@ func Migrate(db *gorm.DB) error {
 // MustMigrate 在迁移失败时直接终止进程，适用于启动即要求结构一致的场景。
 func MustMigrate(db *gorm.DB) {
 	if err := Migrate(db); err != nil {
-		log.Fatalf("auto-migrate failed: %v", err)
+		logger.Fatalf("auto-migrate failed: %v", err)
 	}
 }

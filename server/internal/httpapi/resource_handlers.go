@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"cool-dispatch/internal/cloudflare"
+	"cool-dispatch/internal/logger"
 	"cool-dispatch/internal/models"
 	"cool-dispatch/internal/security"
 
@@ -1121,7 +1123,7 @@ func normalizeLegacyOutstandingPaymentFields(existing *models.Appointment, incom
 	incoming.PaymentTime = nil
 }
 
-// DeleteAppointment 删除指定预约记录。
+// DeleteAppointment 删除指定预约记录，并异步清理关联的 Cloudflare 图床照片。
 func (h *Handler) DeleteAppointment(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -1129,9 +1131,43 @@ func (h *Handler) DeleteAppointment(c *gin.Context) {
 		return
 	}
 
+	// 删除前先查出预约记录，提取照片列表用于后续图床清理。
+	var appointment models.Appointment
+	if err := h.db.First(&appointment, "id = ?", id).Error; err != nil {
+		// 记录不存在也视为删除成功（幂等），但无需清理图床。
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusOK, gin.H{"deleted": true})
+			return
+		}
+		respondMessage(c, http.StatusInternalServerError, "failed to find appointment")
+		return
+	}
+
+	// 提取照片 URL 列表，用于删除数据库记录后异步清理图床。
+	var photoURLs []string
+	if len(appointment.Photos) > 0 {
+		_ = json.Unmarshal(appointment.Photos, &photoURLs)
+	}
+
 	if err := h.db.Delete(&models.Appointment{}, "id = ?", id).Error; err != nil {
 		respondMessage(c, http.StatusInternalServerError, "failed to delete appointment")
 		return
+	}
+
+	// 异步清理 Cloudflare 图床照片，不阻塞删除响应。
+	// 清理失败仅打日志，不影响删除结果（图床会有孤儿图片，可定期人工清理）。
+	if h.cfClient.IsConfigured() && len(photoURLs) > 0 {
+		go func(urls []string) {
+			for _, u := range urls {
+				imageID := cloudflare.ExtractImageIDFromURL(u)
+				if imageID == "" {
+					continue // 非 Cloudflare 图片（如旧 Base64 数据），跳过
+				}
+				if err := h.cfClient.DeleteImage(imageID); err != nil {
+					logger.Errorf("[cloudflare] async delete image %s failed: %v", imageID, err)
+				}
+			}
+		}(photoURLs)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
@@ -2451,6 +2487,25 @@ func (h *Handler) applyAppointmentDerivedFields(appointment *models.Appointment)
 	appointment.DepartedTime = normalizeTimePtrUTC(appointment.DepartedTime)
 	appointment.CompletedTime = normalizeTimePtrUTC(appointment.CompletedTime)
 	appointment.PaymentTime = normalizeTimePtrUTC(appointment.PaymentTime)
+
+	// ---------- 服务端时间自动填充 ----------
+	// 当状态驱动的时间字段为空时，用服务器当前 UTC 时间自动补充，
+	// 确保所有关键业务时间戳来自后端，不依赖客户端本地时钟。
+	now := time.Now().UTC()
+
+	// 状态为 arrived 或更后阶段时，自动补充出发时间
+	if isOneOf(appointment.Status, "arrived", "completed") && appointment.DepartedTime == nil {
+		appointment.DepartedTime = &now
+	}
+	// 状态为 arrived 时，自动补充签到时间（如果前端没传）
+	if isOneOf(appointment.Status, "arrived", "completed") && appointment.CheckinTime == nil {
+		appointment.CheckinTime = &now
+	}
+	// 状态为 completed 时，自动补充完工时间
+	if appointment.Status == "completed" && appointment.CompletedTime == nil {
+		appointment.CompletedTime = &now
+	}
+
 
 	if appointment.TechnicianID != nil && appointment.Status == "pending" {
 		appointment.Status = "assigned"

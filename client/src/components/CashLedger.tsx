@@ -90,7 +90,7 @@ export default function CashLedger({ technician, appointments, ledgerEntries, on
       type: 'return',
       amount,
       note: returnNote || CASH_LEDGER_RETURN_DEFAULT_NOTE,
-      created_at: new Date().toISOString(),
+      // created_at 不传，由后端服务器自动用 UTC 当前时间填充
     };
 
     onAddEntry(newEntry);

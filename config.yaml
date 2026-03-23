@@ -9,7 +9,7 @@
 # - development：开启 Gin 调试日志，Cookie 不强制 HTTPS
 # - production：自动开启 cookie_secure 和 enable_static
 # 对应环境变量：APP_ENV（也会读取 GIN_MODE）
-app_env: development
+app_env: production
 
 # HTTP 服务监听端口
 # 对应环境变量：PORT
@@ -24,7 +24,7 @@ database_url: postgres://postgres:postgres@localhost:9101/cool_dispatch?sslmode=
 # 开发时通常是 Vite 的 http://localhost:5173
 # 生产环境设为实际前端域名
 # 对应环境变量：FRONTEND_ORIGIN
-frontend_origin: http://localhost:5173
+frontend_origin: https://iclean.igo-tw.com
 
 # 前端构建产物目录路径（相对于 server/ 目录）
 # 当 enable_static=true 时，后端会托管该目录下的静态文件
@@ -137,7 +137,7 @@ line_channel_secret: ""
 # 示例：https://dispatch.example.com
 # 留空时系统会依次尝试 frontend_origin 或回退到 localhost
 # 对应环境变量：WEBHOOK_PUBLIC_BASE_URL
-webhook_public_base_url: ""
+webhook_public_base_url: "https://iclean.igo-tw.com"
 
 # ---------- Cookie 安全策略 ----------
 
@@ -145,7 +145,7 @@ webhook_public_base_url: ""
 # 生产环境（HTTPS 部署）必须设为 true
 # 本地开发（HTTP）保持 false，否则浏览器不会携带 Cookie
 # 对应环境变量：COOKIE_SECURE
-cookie_secure: false
+cookie_secure: true
 
 # Cookie 的 SameSite 策略，可选值：lax / strict / none
 # - lax（推荐）：允许顶级导航携带 Cookie，兼顾安全与可用性
@@ -153,3 +153,21 @@ cookie_secure: false
 # - none：允许跨站携带 Cookie（必须配合 cookie_secure=true）
 # 对应环境变量：COOKIE_SAME_SITE
 cookie_same_site: lax
+
+# ---------- Cloudflare Images 图床 ----------
+
+# Cloudflare 账户 ID，用于拼接 Images API 请求路径
+# 可在 Cloudflare Dashboard 右侧栏获取
+# 对应环境变量：CLOUDFLARE_ACCOUNT_ID
+cloudflare_account_id: "2382e43464f5ebed9051e181d44900ac"
+
+# Cloudflare API Token，需具备 Images Write 权限
+# 从 Cloudflare Dashboard → API Tokens 创建
+# ⚠️ 敏感信息，生产环境建议用环境变量注入
+# 对应环境变量：CLOUDFLARE_API_TOKEN
+cloudflare_api_token: "cfat_gvesOWUpAMEOeOuOhvbAJlvMROi4bQm6SvWOfdB032995551"
+
+# 日志文件存放目录，相对于工作目录或绝对路径
+# 默认值：logs
+# 对应环境变量：LOG_DIR
+log_dir: "logs"

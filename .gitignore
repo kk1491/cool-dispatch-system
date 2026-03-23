@@ -13,3 +13,4 @@ attached_assets/
 *.md
 !README.md
 output/
+logs/

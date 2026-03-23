@@ -376,7 +376,7 @@ export function toAppointmentUpdatePayload(payload: Appointment): AppointmentUpd
     address: payload.address,
     phone: payload.phone,
     items: payload.items,
-    extra_items: payload.extra_items ?? [],
+    extra_items: (payload.extra_items ?? []).map(({ id, name, price }) => ({ id, name, price })),
     discount_amount: payload.discount_amount ?? 0,
     scheduled_at: payload.scheduled_at,
     scheduled_end: payload.scheduled_end,
@@ -529,5 +529,57 @@ export function linkLineFriendCustomer(lineUid: string, customerId: string | nul
   return requestJSON<LineFriend>(`/api/line-friends/${encodeURIComponent(lineUid)}/customer`, {
     method: 'PUT',
     body: JSON.stringify({ customer_id: customerId }),
+  });
+}
+
+// ---------- Cloudflare Images 图床相关 API ----------
+
+// ImageUploadResult 是图片上传成功后的响应结构。
+export interface ImageUploadResult {
+  // id 是 Cloudflare Images 分配的唯一图片标识。
+  id: string;
+  // url 是图片的公开访问地址。
+  url: string;
+}
+
+// uploadImage 将图片文件上传到 Cloudflare Images 图床。
+// 使用 FormData/multipart 格式发送，不走 requestJSON 的 JSON Content-Type。
+export async function uploadImage(file: File): Promise<ImageUploadResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(buildApiUrl('/api/upload/image'), {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+    // 注意：不设置 Content-Type，让浏览器自动设置 multipart/form-data 并附带 boundary。
+  });
+
+  if (!response.ok) {
+    let message = `Upload failed with status ${response.status}`;
+    try {
+      const body = await response.json();
+      if (body?.message) {
+        message = body.message;
+      }
+    } catch {
+      // 保持默认错误消息即可。
+    }
+    if (response.status === 401) {
+      notifyAuthRequired(message);
+      throw new AuthRequiredError(message, response.status);
+    }
+    throw new Error(message);
+  }
+
+  return response.json() as Promise<ImageUploadResult>;
+}
+
+// deleteImage 从 Cloudflare Images 图床删除指定图片。
+// 传入图片的公开访问 URL，后端会自动提取图片 ID 进行删除。
+export function deleteImage(imageUrl: string): Promise<{ deleted: boolean }> {
+  return requestJSON<{ deleted: boolean }>('/api/upload/image', {
+    method: 'DELETE',
+    body: JSON.stringify({ url: imageUrl }),
   });
 }

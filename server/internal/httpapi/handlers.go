@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"cool-dispatch/internal/cloudflare"
 	"cool-dispatch/internal/config"
 	"cool-dispatch/internal/models"
 
@@ -36,11 +37,18 @@ type Handler struct {
 	cookieSecure bool
 	// cookieSameSite 控制认证 Cookie 的 SameSite 策略。
 	cookieSameSite http.SameSite
+	// cfClient 是 Cloudflare Images 图床客户端，未配置时为 nil。
+	cfClient *cloudflare.Client
 }
 
 // handlers.go 负责健康检查与 LINE webhook/好友相关接口；资源 CRUD 统一放在 resource_handlers.go。
 func NewHandler(db *gorm.DB, cfg config.Config) *Handler {
 	webhookBaseURL, webhookBaseURLSource, hasPublicWebhookBaseURL := resolveWebhookBaseURL(cfg)
+
+	// 初始化 Cloudflare Images 客户端，未配置 account_id 或 api_token 时仍创建实例，
+	// 但 IsConfigured() 会返回 false，上传/删除接口会返回配置缺失错误。
+	cfClient := cloudflare.NewClient(cfg.CloudflareAccountID, cfg.CloudflareAPIToken)
+
 	return &Handler{
 		db:                      db,
 		lineChannelSecret:       strings.TrimSpace(cfg.LineChannelSecret),
@@ -49,6 +57,7 @@ func NewHandler(db *gorm.DB, cfg config.Config) *Handler {
 		hasPublicWebhookBaseURL: hasPublicWebhookBaseURL,
 		cookieSecure:            cfg.CookieSecure,
 		cookieSameSite:          cookieSameSiteFromConfig(cfg.CookieSameSite),
+		cfClient:                cfClient,
 	}
 }
 

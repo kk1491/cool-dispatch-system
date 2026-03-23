@@ -62,6 +62,12 @@ type Config struct {
 	SeedDemoData bool
 	// EnableStatic 控制后端是否托管前端静态资源。
 	EnableStatic bool
+	// CloudflareAccountID 是 Cloudflare 账户 ID，用于 Images API 路径拼接。
+	CloudflareAccountID string
+	// CloudflareAPIToken 是 Cloudflare API Token，需具备 Images Write 权限，用于图床上传与删除。
+	CloudflareAPIToken string
+	// LogDir 是日志文件存放目录，相对于工作目录或绝对路径。
+	LogDir string
 }
 
 // fileConfig 描述 config.yaml 中允许声明的配置项；使用指针区分“未配置”与零值。
@@ -92,6 +98,9 @@ type fileConfig struct {
 	AutoMigrate                  *bool   `yaml:"auto_migrate"`
 	SeedDemoData                 *bool   `yaml:"seed_demo_data"`
 	EnableStatic                 *bool   `yaml:"enable_static"`
+	CloudflareAccountID          *string `yaml:"cloudflare_account_id"`
+	CloudflareAPIToken           *string `yaml:"cloudflare_api_token"`
+	LogDir                       *string `yaml:"log_dir"`
 }
 
 // Load 负责按“默认值 -> config.yaml -> 环境变量”的优先级加载服务配置。
@@ -110,6 +119,7 @@ func Load() Config {
 		MaxJSONBodyBytes:             1 << 20,
 		MaxWebhookBodyBytes:          256 << 10,
 		CookieSameSite:               "lax",
+		LogDir:                       "logs",
 	}
 
 	if raw := strings.TrimSpace(os.Getenv("GIN_MODE")); raw != "" {
@@ -147,6 +157,9 @@ func Load() Config {
 	cfg.AutoMigrate = getBoolEnv("AUTO_MIGRATE", cfg.AutoMigrate)
 	cfg.SeedDemoData = getBoolEnv("SEED_DEMO_DATA", cfg.SeedDemoData)
 	cfg.EnableStatic = cfg.AppEnv == "production" || getBoolEnv("SERVE_STATIC", cfg.EnableStatic)
+	cfg.CloudflareAccountID = strings.TrimSpace(getEnv("CLOUDFLARE_ACCOUNT_ID", cfg.CloudflareAccountID))
+	cfg.CloudflareAPIToken = strings.TrimSpace(getEnv("CLOUDFLARE_API_TOKEN", cfg.CloudflareAPIToken))
+	cfg.LogDir = strings.TrimSpace(getEnv("LOG_DIR", cfg.LogDir))
 
 	return cfg
 }
@@ -239,6 +252,9 @@ func applyFileConfig(cfg *Config, fileCfg fileConfig) {
 	applyBool(&cfg.AutoMigrate, fileCfg.AutoMigrate)
 	applyBool(&cfg.SeedDemoData, fileCfg.SeedDemoData)
 	applyBool(&cfg.EnableStatic, fileCfg.EnableStatic)
+	applyString(&cfg.CloudflareAccountID, fileCfg.CloudflareAccountID)
+	applyString(&cfg.CloudflareAPIToken, fileCfg.CloudflareAPIToken)
+	applyString(&cfg.LogDir, fileCfg.LogDir)
 }
 
 // getEnv 读取字符串环境变量，不存在时返回默认值。
