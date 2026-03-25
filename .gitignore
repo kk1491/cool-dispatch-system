@@ -14,6 +14,7 @@ attached_assets/
 !README.md
 output/
 logs/
+backups/
 .gohome/
 .gomodcache/
 .gopath/

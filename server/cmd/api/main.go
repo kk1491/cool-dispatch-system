@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"path/filepath"
 	"runtime"
 	"time"
 
+	"cool-dispatch/internal/backup"
 	"cool-dispatch/internal/config"
 	"cool-dispatch/internal/database"
 	"cool-dispatch/internal/httpapi"
@@ -62,6 +64,20 @@ func main() {
 			logger.Fatalf("sql seed failed: %v", err)
 		}
 	}
+
+	// 启动数据库定时备份协程（独立 goroutine，不影响主服务）
+	// - 启动时立即执行一次备份
+	// - 之后每 24 小时自动备份一次
+	// - 最多保留 cfg.BackupMaxKeep 份（默认 7 天）
+	// - 备份文件为 .sql.gz 格式，存放在 cfg.BackupDir 目录
+	backupCtx, backupCancel := context.WithCancel(context.Background())
+	defer backupCancel()
+	backup.StartScheduler(backupCtx, backup.Config{
+		DatabaseURL: cfg.DatabaseURL,
+		BackupDir:   cfg.BackupDir,
+		MaxBackups:  cfg.BackupMaxKeep,
+		Interval:    24 * time.Hour,
+	})
 
 	router := httpapi.NewRouter(cfg, db)
 	server := &http.Server{

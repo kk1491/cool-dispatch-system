@@ -1,6 +1,7 @@
-// Package logger 封装应用日志系统，基于 zap + lumberjack 实现：
+// Package logger 封装应用日志系统，基于 zap + 自定义 prependWriter 实现：
 // - 普通日志（DEBUG/INFO/WARN）写入 app.log
 // - 错误日志（ERROR/FATAL）写入 error.log
+// - 新日志写在文件最上方，打开文件即可看到最新内容
 // - 每类文件最多保留 MaxBackups 个备份，单文件最大 MaxSize MB
 // - 同时输出到 stdout/stderr，方便开发调试
 // - 全局单例 + 便捷函数，业务代码零侵入调用
@@ -12,15 +13,15 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // 全局日志实例，Init 后可用。
+// 默认使用 zap.NewNop() 初始化，确保在未调用 Init 时也不会 panic。
 var (
 	// L 是结构化日志实例，适合用 zap.String / zap.Int 等 Field。
-	L *zap.Logger
+	L *zap.Logger = zap.NewNop()
 	// S 是 SugaredLogger，支持 printf 风格格式化，更灵活但略慢。
-	S *zap.SugaredLogger
+	S *zap.SugaredLogger = zap.NewNop().Sugar()
 )
 
 // Config 日志系统配置。
@@ -36,6 +37,12 @@ type Config struct {
 // Init 根据配置初始化全局日志实例。
 // 调用后即可通过 logger.Info / logger.Error 等便捷函数写日志。
 // 应在程序启动时最早调用，确保后续所有模块都能使用日志。
+//
+// 日志写入特性：
+//   - 新日志写在文件最上方（prepend 模式），打开文件第一行即最新日志
+//   - 每条日志自带换行符，格式清晰易读
+//   - 文件超过 MaxSizeMB 后自动轮转，备份文件带时间戳
+//   - 每类日志最多保留 MaxBackups 个备份文件
 func Init(cfg Config) {
 	// 应用默认值
 	if cfg.LogDir == "" {
@@ -51,27 +58,26 @@ func Init(cfg Config) {
 	// 确保日志目录存在
 	_ = os.MkdirAll(cfg.LogDir, 0755)
 
-	// ---------- 日志文件轮转配置 ----------
+	// ---------- 日志文件写入器配置 ----------
+	// 使用自定义 prependWriter，新日志写在文件最上方。
 
 	// 普通日志文件（app.log）：接收 DEBUG/INFO/WARN 级别
-	infoRotator := &lumberjack.Logger{
-		Filename:   filepath.Join(cfg.LogDir, "app.log"),
-		MaxSize:    cfg.MaxSizeMB,
-		MaxBackups: cfg.MaxBackups,
-		LocalTime:  true, // 备份文件名使用本地时间
-	}
+	infoWriter := newPrependWriter(
+		filepath.Join(cfg.LogDir, "app.log"),
+		cfg.MaxSizeMB,
+		cfg.MaxBackups,
+	)
 
 	// 错误日志文件（error.log）：接收 ERROR/DPANIC/PANIC/FATAL 级别
-	errorRotator := &lumberjack.Logger{
-		Filename:   filepath.Join(cfg.LogDir, "error.log"),
-		MaxSize:    cfg.MaxSizeMB,
-		MaxBackups: cfg.MaxBackups,
-		LocalTime:  true,
-	}
+	errorWriter := newPrependWriter(
+		filepath.Join(cfg.LogDir, "error.log"),
+		cfg.MaxSizeMB,
+		cfg.MaxBackups,
+	)
 
 	// ---------- 编码器配置 ----------
 	// 使用控制台文本格式，每行一条日志，方便人工浏览。
-	// 格式示例：2026-03-23T13:22:29.123+0800	INFO	httpapi/router.go:55	request completed	{"method": "GET", "path": "/api/appointments", "status": 200, "latency": "12ms"}
+	// 格式示例：2026-03-23 13:22:29.123	INFO	httpapi/router.go:55	request completed	{"method": "GET", "path": "/api/appointments", "status": 200, "latency": "12ms"}
 	encoderCfg := zapcore.EncoderConfig{
 		TimeKey:        "time",
 		LevelKey:       "level",
@@ -79,8 +85,8 @@ func Init(cfg Config) {
 		CallerKey:      "caller",
 		MessageKey:     "msg",
 		StacktraceKey:  "stacktrace",
-		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeLevel:    zapcore.CapitalLevelEncoder,                 // INFO / ERROR 大写
+		LineEnding:     zapcore.DefaultLineEnding, // 每条日志末尾自动换行
+		EncodeLevel:    zapcore.CapitalLevelEncoder,                          // INFO / ERROR 大写
 		EncodeTime:     zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000"), // 易读时间格式
 		EncodeDuration: zapcore.StringDurationEncoder,
 		EncodeCaller:   zapcore.ShortCallerEncoder, // 短路径 package/file.go:line
@@ -101,17 +107,17 @@ func Init(cfg Config) {
 	})
 
 	// 构建多核心日志管道：
-	// - 普通日志 → app.log + stdout
-	// - 错误日志 → error.log + stderr（同时也写入 app.log 保证完整性）
+	// - 普通日志 → app.log（prepend 模式） + stdout
+	// - 错误日志 → error.log（prepend 模式） + stderr
 	core := zapcore.NewTee(
-		// 普通日志同时写文件和标准输出
+		// 普通日志同时写文件（新内容在顶部）和标准输出
 		zapcore.NewCore(encoder, zapcore.NewMultiWriteSyncer(
-			zapcore.AddSync(infoRotator),
+			zapcore.AddSync(infoWriter),
 			zapcore.AddSync(os.Stdout),
 		), infoLevel),
-		// 错误日志同时写文件和标准错误
+		// 错误日志同时写文件（新内容在顶部）和标准错误
 		zapcore.NewCore(encoder, zapcore.NewMultiWriteSyncer(
-			zapcore.AddSync(errorRotator),
+			zapcore.AddSync(errorWriter),
 			zapcore.AddSync(os.Stderr),
 		), errorLevel),
 	)

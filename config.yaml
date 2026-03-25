@@ -171,3 +171,17 @@ cloudflare_api_token: "cfat_gvesOWUpAMEOeOuOhvbAJlvMROi4bQm6SvWOfdB032995551"
 # 默认值：logs
 # 对应环境变量：LOG_DIR
 log_dir: "logs"
+
+# ---------- 数据库自动备份 ----------
+
+# 备份文件存放目录，相对于工作目录或绝对路径
+# 系统启动后会在独立协程中每天自动执行一次 pg_dump 全量备份
+# 备份文件格式为 .sql.gz（gzip 压缩），文件名含时间戳
+# 对应环境变量：BACKUP_DIR
+backup_dir: "backups"
+
+# 最多保留的备份文件数量，超出后自动删除最旧的
+# 默认保留近 7 天的备份
+# 对应环境变量：BACKUP_MAX_KEEP
+backup_max_keep: 7
+
