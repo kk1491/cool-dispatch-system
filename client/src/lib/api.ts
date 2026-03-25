@@ -583,3 +583,87 @@ export function deleteImage(imageUrl: string): Promise<{ deleted: boolean }> {
     body: JSON.stringify({ url: imageUrl }),
   });
 }
+
+// ============================================================================
+// PAYUNi 支付相关 API
+// ============================================================================
+
+// ---------- 管理员：创建支付订单请求体 ----------
+export interface CreatePaymentOrderRequest {
+  trade_amt: number;
+  prod_desc: string;
+  customer_name: string;
+  payment_method?: string;   // credit / atm / both，默认 both
+  customer_email?: string;
+  customer_phone?: string;
+  appointment_id?: number;
+}
+
+// ---------- 管理员：创建支付订单返回体 ----------
+export interface CreatePaymentOrderResponse {
+  order: any;
+  payment_token: string;
+  payment_url: string;
+}
+
+// createPaymentOrder 管理员创建支付订单，返回支付链接（需登录）。
+export function createPaymentOrder(
+  payload: CreatePaymentOrderRequest
+): Promise<CreatePaymentOrderResponse> {
+  return requestJSON<CreatePaymentOrderResponse>('/api/payment/orders', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+// listPaymentOrders 管理员查看所有支付订单记录（需登录）。
+export function listPaymentOrders(): Promise<any[]> {
+  return requestJSON<any[]>('/api/payment/orders');
+}
+
+// ---------- 客户公开：订单信息（无需登录，凭 Token） ----------
+export interface PaymentOrderInfo {
+  trade_amt: number;
+  prod_desc: string;
+  payment_method: string;
+  customer_name: string;
+  status: string;
+  mer_trade_no: string;
+  pay_no: string;
+  atm_expire_date: string;
+}
+
+// getPaymentOrderByToken 客户凭支付令牌查看订单信息。
+export function getPaymentOrderByToken(payToken: string): Promise<PaymentOrderInfo> {
+  return requestJSON<PaymentOrderInfo>(`/api/payment/token/${payToken}`);
+}
+
+// ---------- 客户公开：信用卡支付请求体 ----------
+export interface TokenCreditPayRequest {
+  card_no: string;
+  card_expired: string;   // MMYY
+  card_cvc: string;
+  card_inst?: string;     // 1=一次付清
+}
+
+// tokenCreditPay 客户凭支付令牌发起信用卡支付。
+export function tokenCreditPay(
+  payToken: string,
+  payload: TokenCreditPayRequest
+): Promise<any> {
+  return requestJSON(`/api/payment/token/${payToken}/credit`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+// tokenATMPay 客户凭支付令牌发起 ATM 虚拟帐号取号。
+export function tokenATMPay(
+  payToken: string,
+  bankType: string
+): Promise<any> {
+  return requestJSON(`/api/payment/token/${payToken}/atm`, {
+    method: 'POST',
+    body: JSON.stringify({ bank_type: bankType }),
+  });
+}

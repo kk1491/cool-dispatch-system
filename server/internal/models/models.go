@@ -309,6 +309,61 @@ type AuthToken struct {
 	UpdatedAt time.Time `json:"updated_at" gorm:"comment:更新时间"`
 }
 
+// PaymentOrder 记录每一笔支付订单及其完整生命周期。
+// 管理员创建订单后生成 PaymentToken，客户凭该 Token 无需登录即可查看和支付。
+type PaymentOrder struct {
+	// ID 是支付订单主键。
+	ID uint `json:"id" gorm:"primaryKey;comment:支付订单主键"`
+	// PaymentToken 随机令牌（32字节 URL-safe base64），客户端凭此无登录访问。
+	PaymentToken string `json:"payment_token" gorm:"uniqueIndex;size:64;not null;comment:支付令牌"`
+	// MerTradeNo PAYUNi 商店订单编号（后端自动生成，限25字内，10分钟内不重复）。
+	MerTradeNo string `json:"mer_trade_no" gorm:"uniqueIndex;size:25;not null;comment:PAYUNi商店订单编号"`
+	// TradeAmt 订单金额（整数，单位：元）。
+	TradeAmt int `json:"trade_amt" gorm:"not null;comment:订单金额"`
+	// ProdDesc 商品说明（展示给客户）。
+	ProdDesc string `json:"prod_desc" gorm:"not null;comment:商品说明"`
+	// PaymentMethod 允许的支付方式：credit=信用卡, atm=ATM转账, both=两种都可。
+	PaymentMethod string `json:"payment_method" gorm:"not null;default:'both';comment:允许的支付方式"`
+	// CustomerName 消费者名称（管理员创建时填写）。
+	CustomerName string `json:"customer_name" gorm:"not null;comment:消费者名称"`
+	// CustomerEmail 消费者信箱（选填）。
+	CustomerEmail string `json:"customer_email,omitempty" gorm:"comment:消费者信箱"`
+	// CustomerPhone 消费者电话（选填）。
+	CustomerPhone string `json:"customer_phone,omitempty" gorm:"comment:消费者电话"`
+	// AppointmentID 可选关联的预约 ID。
+	AppointmentID *uint `json:"appointment_id,omitempty" gorm:"index;comment:关联预约ID"`
+	// CreatedByID 创建此支付订单的管理员用户 ID。
+	CreatedByID uint `json:"created_by_id" gorm:"not null;comment:创建者管理员ID"`
+	// Status 订单状态：pending=待支付, paying=支付中, paid=已支付, failed=失败, expired=过期, cancelled=取消。
+	Status string `json:"status" gorm:"not null;default:'pending';index;comment:订单状态"`
+	// TradeNo PAYUNi 平台分配的交易序号。
+	TradeNo string `json:"trade_no,omitempty" gorm:"comment:PAYUNi平台序号"`
+	// TradeStatus PAYUNi 返回的交易状态码。
+	TradeStatus string `json:"trade_status,omitempty" gorm:"comment:PAYUNi交易状态码"`
+	// PayNo ATM 虚拟帐号（仅 ATM 支付时有值）。
+	PayNo string `json:"pay_no,omitempty" gorm:"comment:ATM虚拟帐号"`
+	// ATMExpireDate ATM 缴费截止日期。
+	ATMExpireDate string `json:"atm_expire_date,omitempty" gorm:"comment:ATM缴费截止日"`
+	// AuthCode 信用卡授权码（仅信用卡支付成功时有值）。
+	AuthCode string `json:"auth_code,omitempty" gorm:"comment:信用卡授权码"`
+	// Card6No 卡号前六码（脱敏存储，用于对帐）。
+	Card6No string `json:"card_6_no,omitempty" gorm:"comment:卡号前六码"`
+	// Card4No 卡号后四码（脱敏存储，用于对帐）。
+	Card4No string `json:"card_4_no,omitempty" gorm:"comment:卡号后四码"`
+	// ResCode PAYUNi 回应码。
+	ResCode string `json:"res_code,omitempty" gorm:"comment:PAYUNi回应码"`
+	// ResCodeMsg PAYUNi 回应码说明。
+	ResCodeMsg string `json:"res_code_msg,omitempty" gorm:"comment:PAYUNi回应码说明"`
+	// RawResponse PAYUNi 解密后的完整返回（JSON 存储，方便对帐排查）。
+	RawResponse datatypes.JSON `json:"raw_response,omitempty" gorm:"type:jsonb;comment:PAYUNi完整返回"`
+	// PaidAt 支付成功确认时间。
+	PaidAt *time.Time `json:"paid_at,omitempty" gorm:"comment:支付成功时间"`
+	// CreatedAt 订单创建时间。
+	CreatedAt time.Time `json:"created_at" gorm:"comment:创建时间"`
+	// UpdatedAt 订单最近更新时间。
+	UpdatedAt time.Time `json:"updated_at" gorm:"comment:更新时间"`
+}
+
 // AutoMigrateModels 返回需要参与自动迁移的全部模型列表。
 func AutoMigrateModels() []any {
 	return []any{
@@ -325,5 +380,6 @@ func AutoMigrateModels() []any {
 		&LineFriend{},
 		&LineEvent{},
 		&AuthToken{},
+		&PaymentOrder{},
 	}
 }

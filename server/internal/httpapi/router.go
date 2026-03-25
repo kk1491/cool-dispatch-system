@@ -39,6 +39,12 @@ func NewRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 		api.PATCH("/reviews/token/:reviewToken/share-line", handler.UpdateReviewShareLine)
 		api.POST("/webhook/line", handler.ReceiveLineWebhook)
 		api.POST("/reviews/token/:reviewToken", handler.CreateReview)
+		// PAYUNi 异步通知回调（信用卡 UNKNOWN 后续通知 + ATM 缴费完成通知共用）
+		api.POST("/webhook/payuni", handler.HandlePayuniNotify)
+		// ---------- PAYUNi 支付 Token 公开接口（客户无需登录，凭 Token 访问） ----------
+		api.GET("/payment/token/:payToken", handler.GetPaymentOrderByToken)
+		api.POST("/payment/token/:payToken/credit", handler.HandleTokenCreditPay)
+		api.POST("/payment/token/:payToken/atm", handler.HandleTokenATMPay)
 	}
 
 	// 需要登录后才能访问的业务接口统一挂载认证中间件，避免客户、工单和财务数据继续匿名暴露。
@@ -113,6 +119,9 @@ func NewRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 		adminOnly.PUT("/customers", handler.ReplaceCustomers)
 		adminOnly.DELETE("/customers/:id", handler.DeleteCustomer)
 		adminOnly.PUT("/line-friends/:lineUid/customer", handler.LinkLineFriendCustomer)
+		// ---------- PAYUNi 支付订单管理（仅管理员） ----------
+		adminOnly.POST("/payment/orders", handler.CreatePaymentOrder)
+		adminOnly.GET("/payment/orders", handler.ListPaymentOrders)
 	}
 
 	if cfg.EnableStatic {

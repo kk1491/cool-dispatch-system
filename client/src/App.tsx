@@ -3,7 +3,7 @@ import {
   ClipboardList, User as UserIcon, Plus, ChevronRight, LogOut, Package, 
   DollarSign, Users, MessageSquare, MapPin, Phone, Calendar,
   CheckCircle2, X, Search, Clock, CalendarDays, Map, Star, LayoutDashboard,
-  AlertTriangle, Download, Send, Link2, Copy, Check
+  AlertTriangle, Download, Send, Link2, Copy, Check, CreditCard
 } from 'lucide-react';
 import { Switch, Route } from 'wouter';
 import { motion, AnimatePresence } from 'motion/react';
@@ -29,6 +29,8 @@ import ScheduleGantt from './components/ScheduleGantt';
 import NotificationSender from './components/NotificationSender';
 import HeatMap from './components/HeatMap';
 import ReviewPage from './components/ReviewPage';
+import PaymentPage from './components/PaymentPage';
+import PaymentManagement from './components/PaymentManagement';
 import ReviewDashboard from './components/ReviewDashboard';
 import DashboardView from './components/DashboardView';
 import { getAutoDispatchSuggestions, DispatchScore } from './lib/autoDispatch';
@@ -91,7 +93,7 @@ import {
   WebhookSettingsPayload,
 } from './lib/api';
 
-type ViewType = 'dashboard' | 'list' | 'create' | 'technicians' | 'customers' | 'line' | 'settings' | 'financials' | 'reminders' | 'cashLedger' | 'schedule' | 'zones' | 'heatmap' | 'reviews';
+type ViewType = 'dashboard' | 'list' | 'create' | 'technicians' | 'customers' | 'line' | 'settings' | 'financials' | 'reminders' | 'cashLedger' | 'schedule' | 'zones' | 'heatmap' | 'reviews' | 'payments';
 
 const EMPTY_APPOINTMENT_ITEMS: ACUnit[] = [];
 
@@ -882,6 +884,20 @@ export default function App() {
     );
   }
 
+  // 支付页面：客户凭 PaymentToken 无需登录直接访问支付页面。
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/pay/')) {
+    return (
+      <>
+        <Toaster position="top-center" />
+        <Switch>
+          <Route path="/pay/:payToken">
+            <PaymentPage />
+          </Route>
+        </Switch>
+      </>
+    );
+  }
+
   if (!user) {
     return <LoginPage onLogin={handleLogin} />;
   }
@@ -913,7 +929,8 @@ export default function App() {
     schedule: '排程表',
     zones: '區域管理',
     heatmap: '熱區地圖',
-    reviews: '客戶評價'
+    reviews: '客戶評價',
+    payments: '支付管理'
   };
 
   return (
@@ -1004,6 +1021,7 @@ export default function App() {
                 { key: 'financials' as ViewType, icon: DollarSign, label: '財務報表' },
                 { key: 'heatmap' as ViewType, icon: Map, label: '熱區地圖' },
                 { key: 'reviews' as ViewType, icon: Star, label: '客戶評價' },
+                { key: 'payments' as ViewType, icon: CreditCard, label: '支付管理' },
               ]).map(item => (
                 <button
                   key={item.key}
@@ -1689,6 +1707,12 @@ export default function App() {
               {view === 'reviews' && user.role === 'admin' && (
                 <motion.div key="reviews" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
                   <ReviewDashboard reviews={reviews} technicians={technicians} appointments={appointments} />
+                </motion.div>
+              )}
+
+              {view === 'payments' && user.role === 'admin' && (
+                <motion.div key="payments" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
+                  <PaymentManagement />
                 </motion.div>
               )}
 

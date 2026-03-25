@@ -15,6 +15,7 @@ import (
 	"cool-dispatch/internal/cloudflare"
 	"cool-dispatch/internal/config"
 	"cool-dispatch/internal/models"
+	"cool-dispatch/internal/payuni"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/datatypes"
@@ -39,6 +40,8 @@ type Handler struct {
 	cookieSameSite http.SameSite
 	// cfClient 是 Cloudflare Images 图床客户端，未配置时为 nil。
 	cfClient *cloudflare.Client
+	// payuniClient 是 PAYUNi 支付客户端，未配置时为 nil（MerID/HashKey/HashIV 全部配置才创建）。
+	payuniClient *payuni.Client
 }
 
 // handlers.go 负责健康检查与 LINE webhook/好友相关接口；资源 CRUD 统一放在 resource_handlers.go。
@@ -49,6 +52,19 @@ func NewHandler(db *gorm.DB, cfg config.Config) *Handler {
 	// 但 IsConfigured() 会返回 false，上传/删除接口会返回配置缺失错误。
 	cfClient := cloudflare.NewClient(cfg.CloudflareAccountID, cfg.CloudflareAPIToken)
 
+	// 初始化 PAYUNi 支付客户端：仅在 MerID + HashKey + HashIV 全部配置时才创建，
+	// 未配置时 payuniClient 为 nil，支付接口会返回 503。
+	var payuniClient *payuni.Client
+	if cfg.PayuniMerID != "" && cfg.PayuniHashKey != "" && cfg.PayuniHashIV != "" {
+		payuniClient = &payuni.Client{
+			BaseURL:   cfg.PayuniAPIBaseURL,
+			MerID:     cfg.PayuniMerID,
+			HashKey:   cfg.PayuniHashKey,
+			HashIV:    cfg.PayuniHashIV,
+			NotifyURL: cfg.PayuniNotifyURL,
+		}
+	}
+
 	return &Handler{
 		db:                      db,
 		lineChannelSecret:       strings.TrimSpace(cfg.LineChannelSecret),
@@ -58,6 +74,7 @@ func NewHandler(db *gorm.DB, cfg config.Config) *Handler {
 		cookieSecure:            cfg.CookieSecure,
 		cookieSameSite:          cookieSameSiteFromConfig(cfg.CookieSameSite),
 		cfClient:                cfClient,
+		payuniClient:            payuniClient,
 	}
 }
 

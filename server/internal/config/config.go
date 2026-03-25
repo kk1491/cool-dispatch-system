@@ -72,6 +72,16 @@ type Config struct {
 	BackupDir string
 	// BackupMaxKeep 是数据库备份最多保留的份数（默认 7，保留近 7 天）。
 	BackupMaxKeep int
+	// PayuniAPIBaseURL 是 PAYUNi 支付平台 API 基础 URL（不含路径），测试区/正式区切换用。
+	PayuniAPIBaseURL string
+	// PayuniMerID 是 PAYUNi 平台分配的商店代号。
+	PayuniMerID string
+	// PayuniHashKey 是 PAYUNi AES-GCM 加密密钥（32 字节），⚠️ 敏感信息。
+	PayuniHashKey string
+	// PayuniHashIV 是 PAYUNi AES-GCM 加密向量（16 字节），⚠️ 敏感信息。
+	PayuniHashIV string
+	// PayuniNotifyURL 是 PAYUNi 交易结果异步通知回调网址（选填，仅限 80/443 port）。
+	PayuniNotifyURL string
 }
 
 // fileConfig 描述 config.yaml 中允许声明的配置项；使用指针区分“未配置”与零值。
@@ -107,6 +117,11 @@ type fileConfig struct {
 	LogDir                       *string `yaml:"log_dir"`
 	BackupDir                    *string `yaml:"backup_dir"`
 	BackupMaxKeep                *int    `yaml:"backup_max_keep"`
+	PayuniAPIBaseURL             *string `yaml:"payuni_api_base_url"`
+	PayuniMerID                  *string `yaml:"payuni_mer_id"`
+	PayuniHashKey                *string `yaml:"payuni_hash_key"`
+	PayuniHashIV                 *string `yaml:"payuni_hash_iv"`
+	PayuniNotifyURL              *string `yaml:"payuni_notify_url"`
 }
 
 // Load 负责按“默认值 -> config.yaml -> 环境变量”的优先级加载服务配置。
@@ -170,6 +185,11 @@ func Load() Config {
 	cfg.LogDir = strings.TrimSpace(getEnv("LOG_DIR", cfg.LogDir))
 	cfg.BackupDir = strings.TrimSpace(getEnv("BACKUP_DIR", cfg.BackupDir))
 	cfg.BackupMaxKeep = getIntEnv("BACKUP_MAX_KEEP", cfg.BackupMaxKeep)
+	cfg.PayuniAPIBaseURL = strings.TrimSpace(getEnv("PAYUNI_API_BASE_URL", cfg.PayuniAPIBaseURL))
+	cfg.PayuniMerID = strings.TrimSpace(getEnv("PAYUNI_MER_ID", cfg.PayuniMerID))
+	cfg.PayuniHashKey = strings.TrimSpace(getEnv("PAYUNI_HASH_KEY", cfg.PayuniHashKey))
+	cfg.PayuniHashIV = strings.TrimSpace(getEnv("PAYUNI_HASH_IV", cfg.PayuniHashIV))
+	cfg.PayuniNotifyURL = strings.TrimSpace(getEnv("PAYUNI_NOTIFY_URL", cfg.PayuniNotifyURL))
 
 	return cfg
 }
@@ -267,6 +287,11 @@ func applyFileConfig(cfg *Config, fileCfg fileConfig) {
 	applyString(&cfg.LogDir, fileCfg.LogDir)
 	applyString(&cfg.BackupDir, fileCfg.BackupDir)
 	applyInt(&cfg.BackupMaxKeep, fileCfg.BackupMaxKeep)
+	applyString(&cfg.PayuniAPIBaseURL, fileCfg.PayuniAPIBaseURL)
+	applyString(&cfg.PayuniMerID, fileCfg.PayuniMerID)
+	applyString(&cfg.PayuniHashKey, fileCfg.PayuniHashKey)
+	applyString(&cfg.PayuniHashIV, fileCfg.PayuniHashIV)
+	applyString(&cfg.PayuniNotifyURL, fileCfg.PayuniNotifyURL)
 }
 
 // getEnv 读取字符串环境变量，不存在时返回默认值。
