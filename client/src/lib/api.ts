@@ -596,7 +596,7 @@ export interface CreatePaymentOrderRequest {
   payment_method?: string;   // credit / atm / both，默认 both
   customer_email?: string;
   customer_phone?: string;
-  appointment_id?: number;
+  appointment_id: number;
 }
 
 // ---------- 管理员：创建支付订单返回体 ----------
@@ -616,9 +616,37 @@ export function createPaymentOrder(
   });
 }
 
+// PaymentOrderRecord 管理员支付管理页使用的支付订单读模型。
+// 保持字段显式声明，避免页面继续依赖 any 访问状态和关联预约。
+export interface PaymentOrderRecord {
+  id: number;
+  payment_token: string;
+  mer_trade_no: string;
+  trade_amt: number;
+  prod_desc: string;
+  payment_method: string;
+  customer_name: string;
+  customer_email?: string;
+  customer_phone?: string;
+  appointment_id?: number;
+  status: string;
+  trade_no?: string;
+  trade_status?: string;
+  pay_no?: string;
+  atm_expire_date?: string;
+  auth_code?: string;
+  card_6_no?: string;
+  card_4_no?: string;
+  res_code?: string;
+  res_code_msg?: string;
+  paid_at?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
 // listPaymentOrders 管理员查看所有支付订单记录（需登录）。
-export function listPaymentOrders(): Promise<any[]> {
-  return requestJSON<any[]>('/api/payment/orders');
+export function listPaymentOrders(): Promise<PaymentOrderRecord[]> {
+  return requestJSON<PaymentOrderRecord[]>('/api/payment/orders');
 }
 
 // ---------- 客户公开：订单信息（无需登录，凭 Token） ----------
@@ -629,8 +657,10 @@ export interface PaymentOrderInfo {
   customer_name: string;
   status: string;
   mer_trade_no: string;
-  pay_no: string;
-  atm_expire_date: string;
+  res_code_msg?: string;
+  pay_no?: string;
+  atm_expire_date?: string;
+  appointment_id?: number;
 }
 
 // getPaymentOrderByToken 客户凭支付令牌查看订单信息。

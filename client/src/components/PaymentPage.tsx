@@ -1,30 +1,113 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'wouter';
-import { CreditCard, Building2, AlertTriangle, CheckCircle2, Loader2, Copy, Check } from 'lucide-react';
+import {
+  AlertTriangle,
+  Building2,
+  Check,
+  CheckCircle2,
+  Copy,
+  CreditCard,
+  Loader2,
+  XCircle,
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../lib/utils';
-import { getPaymentOrderByToken, tokenCreditPay, tokenATMPay } from '../lib/api';
 import { toast } from 'react-hot-toast';
+
+import {
+  getPaymentOrderByToken,
+  PaymentOrderInfo,
+  tokenATMPay,
+  tokenCreditPay,
+} from '../lib/api';
+import { cn } from '../lib/utils';
 
 // ============================================================================
 // 客户支付页面（公开，无需登录，凭 PaymentToken 访问）
 //
 // 流程：
-//   1. 管理员创建支付订单 → 生成 Token 链接
-//   2. 客户打开链接 → 本页面加载订单信息
-//   3. 客户选择信用卡或 ATM → 填写支付信息 → 完成支付
+//   1. 管理员创建并绑定预约的支付单
+//   2. 客户打开链接后，前端先判断订单是否仍可支付
+//   3. 仅在订单仍有效时展示信用卡 / ATM 表单，避免过期后继续误导付款
 // ============================================================================
 
-// PaymentOrderInfo 从后端 GET /api/payment/token/:payToken 返回的订单信息
-interface PaymentOrderInfo {
-  trade_amt: number;
-  prod_desc: string;
-  payment_method: string;
-  customer_name: string;
-  status: string;
-  mer_trade_no: string;
-  pay_no: string;
-  atm_expire_date: string;
+type PaymentTab = 'credit' | 'atm';
+
+interface UnavailableState {
+  title: string;
+  description: string;
+  detail?: string;
+  tone: 'info' | 'warning' | 'danger';
+}
+
+// parsePaymentDeadline 兼容后端返回的 `YYYY-MM-DD HH:mm:ss` 或 ISO 时间。
+function parsePaymentDeadline(raw?: string): Date | null {
+  if (!raw) {
+    return null;
+  }
+
+  const normalized = raw.trim().replace(' ', 'T');
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+// isOrderExpired 在公开页补一层失效保护，避免 ATM 逾期后还继续展示虚拟帐号或支付按钮。
+function isOrderExpired(orderInfo: PaymentOrderInfo | null): boolean {
+  if (!orderInfo) {
+    return false;
+  }
+  if (orderInfo.status === 'expired') {
+    return true;
+  }
+
+  const deadline = parsePaymentDeadline(orderInfo.atm_expire_date);
+  if (!deadline || !orderInfo.pay_no || orderInfo.status === 'paid') {
+    return false;
+  }
+
+  return deadline.getTime() < Date.now();
+}
+
+// getUnavailableState 统一收敛处理中、已失效、失败、取消等不可再提交支付的展示文案。
+function getUnavailableState(orderInfo: PaymentOrderInfo | null): UnavailableState | null {
+  if (!orderInfo) {
+    return null;
+  }
+
+  if (orderInfo.status === 'paying' && !orderInfo.pay_no) {
+    return {
+      title: '支付結果確認中',
+      description: '系統正在向金流確認本次付款結果，暫時無法再次發起支付，請稍後刷新頁面確認。',
+      detail: orderInfo.res_code_msg,
+      tone: 'info',
+    };
+  }
+
+  if (isOrderExpired(orderInfo)) {
+    return {
+      title: '支付連結已失效',
+      description: '此筆支付單已超過可付款期限，請聯絡管理員重新建立支付連結。',
+      detail: orderInfo.atm_expire_date ? `原繳費期限：${orderInfo.atm_expire_date}` : undefined,
+      tone: 'warning',
+    };
+  }
+
+  if (orderInfo.status === 'cancelled') {
+    return {
+      title: '支付單已取消',
+      description: '此筆支付單已被取消，無法再繼續付款。',
+      tone: 'warning',
+    };
+  }
+
+  if (orderInfo.status === 'failed') {
+    return {
+      title: '支付單處理失敗',
+      description: '此筆支付單目前不可再次付款，請聯絡管理員確認是否需要重建。',
+      tone: 'danger',
+    };
+  }
+
+  return null;
 }
 
 export default function PaymentPage() {
@@ -36,7 +119,7 @@ export default function PaymentPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   // 当前选择的支付方式标签页: credit / atm
-  const [activeTab, setActiveTab] = useState<'credit' | 'atm'>('credit');
+  const [activeTab, setActiveTab] = useState<PaymentTab>('credit');
   // 信用卡表单
   const [cardNo, setCardNo] = useState('');
   const [cardExpired, setCardExpired] = useState('');
@@ -68,40 +151,53 @@ export default function PaymentPage() {
 
       try {
         const data = await getPaymentOrderByToken(payToken);
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
+
         setOrderInfo(data);
 
-        // 如果已经有 ATM 虚拟帐号，直接显示
-        if (data.pay_no) {
+        // ATM 订单若尚未过期且已经取号，则直接展示帐号信息。
+        if (data.pay_no && !isOrderExpired(data)) {
           setAtmResult({
             pay_no: data.pay_no,
             trade_amt: String(data.trade_amt),
             atm_expire_date: data.atm_expire_date,
           });
+        } else {
+          setAtmResult(null);
         }
 
-        // 根据允许的支付方式设置默认标签
+        // 根据允许的支付方式设置默认标签。
         if (data.payment_method === 'atm') {
           setActiveTab('atm');
         }
 
         setLoadError('');
       } catch (error) {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         console.error(error);
-        setLoadError('支付連結不存在或已失效');
+        setLoadError(error instanceof Error ? error.message : '支付連結不存在或已失效');
       } finally {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     };
 
-    loadOrder();
-    return () => { cancelled = true; };
+    void loadOrder();
+    return () => {
+      cancelled = true;
+    };
   }, [payToken]);
 
   // ---------- 信用卡支付 ----------
   const handleCreditPay = async () => {
-    if (!cardNo || !cardExpired || !cardCvc || isSubmitting) return;
+    if (!cardNo || !cardExpired || !cardCvc || isSubmitting) {
+      return;
+    }
 
     setIsSubmitting(true);
     setPayError('');
@@ -117,11 +213,19 @@ export default function PaymentPage() {
       setPayResult(result);
       if (result.trade_status === '1') {
         setPaySuccess(true);
+      } else if (result.status === 'UNKNOWN') {
+        // 网关结果未知时，立即把页面切到“确认中”，避免客户继续重复提交同一笔单。
+        setOrderInfo(current => current ? { ...current, status: 'paying', res_code_msg: result.message } : current);
       } else {
         setPayError(result.res_code_msg || result.message || '付款失敗');
       }
     } catch (err: any) {
-      setPayError(err.message || '付款請求失敗');
+      const message = err.message || '付款請求失敗';
+      if (message.includes('處理') || message.includes('确认') || message.includes('確認')) {
+        setOrderInfo(current => current ? { ...current, status: 'paying', res_code_msg: message } : current);
+      } else {
+        setPayError(message);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -129,7 +233,9 @@ export default function PaymentPage() {
 
   // ---------- ATM 取号 ----------
   const handleATMPay = async () => {
-    if (!bankType || isSubmitting) return;
+    if (!bankType || isSubmitting) {
+      return;
+    }
 
     setIsSubmitting(true);
     setPayError('');
@@ -138,11 +244,18 @@ export default function PaymentPage() {
       const result = await tokenATMPay(payToken, bankType);
       if (result.pay_no) {
         setAtmResult(result);
+      } else if (result.status === 'UNKNOWN') {
+        setOrderInfo(current => current ? { ...current, status: 'paying', res_code_msg: result.message } : current);
       } else {
         setPayError(result.message || 'ATM 取號失敗');
       }
     } catch (err: any) {
-      setPayError(err.message || 'ATM 取號請求失敗');
+      const message = err.message || 'ATM 取號請求失敗';
+      if (message.includes('處理') || message.includes('确认') || message.includes('確認')) {
+        setOrderInfo(current => current ? { ...current, status: 'paying', res_code_msg: message } : current);
+      } else {
+        setPayError(message);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -150,7 +263,9 @@ export default function PaymentPage() {
 
   // ---------- 复制帐号 ----------
   const copyPayNo = async () => {
-    if (!atmResult?.pay_no) return;
+    if (!atmResult?.pay_no) {
+      return;
+    }
     try {
       await navigator.clipboard.writeText(atmResult.pay_no);
       setCopied(true);
@@ -200,7 +315,7 @@ export default function PaymentPage() {
           <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4">
             <CheckCircle2 className="w-10 h-10 text-emerald-500" />
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">付款成功！</h2>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">付款成功</h2>
           <p className="text-sm text-slate-500 mb-4">感謝您的付款，訂單已確認</p>
           <div className="bg-slate-50 rounded-lg p-4 space-y-2 text-left">
             <div className="flex justify-between">
@@ -224,6 +339,42 @@ export default function PaymentPage() {
               </div>
             )}
           </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  const unavailableState = getUnavailableState(orderInfo);
+
+  // ---------- 已失效 / 不可支付 ----------
+  if (unavailableState) {
+    const toneClass = unavailableState.tone === 'danger'
+      ? 'bg-red-50 border-red-100 text-red-600'
+      : unavailableState.tone === 'info'
+        ? 'bg-blue-50 border-blue-100 text-blue-600'
+        : 'bg-amber-50 border-amber-100 text-amber-600';
+
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white rounded-xl shadow-sm border border-slate-200/60 p-10 text-center max-w-md w-full"
+        >
+          <div className={cn('w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 border', toneClass)}>
+            {unavailableState.tone === 'danger' ? (
+              <XCircle className="w-9 h-9" />
+            ) : unavailableState.tone === 'info' ? (
+              <Loader2 className="w-9 h-9 animate-spin" />
+            ) : (
+              <AlertTriangle className="w-9 h-9" />
+            )}
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">{unavailableState.title}</h2>
+          <p className="text-sm text-slate-500">{unavailableState.description}</p>
+          {unavailableState.detail && (
+            <p className="text-xs text-slate-400 mt-3">{unavailableState.detail}</p>
+          )}
         </motion.div>
       </div>
     );
@@ -281,7 +432,7 @@ export default function PaymentPage() {
 
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-center">
             <p className="text-xs text-amber-700">
-              ⚠️ 請務必在繳費期限前完成轉帳，逾期帳號將失效
+              請務必在繳費期限前完成轉帳；逾期後此連結將失效並需要管理員重新建立。
             </p>
           </div>
         </motion.div>
@@ -290,7 +441,6 @@ export default function PaymentPage() {
   }
 
   // ---------- 主支付表单 ----------
-  // 判断可用的支付方式标签
   const showCredit = orderInfo.payment_method === 'credit' || orderInfo.payment_method === 'both';
   const showATM = orderInfo.payment_method === 'atm' || orderInfo.payment_method === 'both';
 
@@ -352,7 +502,7 @@ export default function PaymentPage() {
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">付款資訊</span>
               <span className="text-xs text-slate-400">{orderInfo.mer_trade_no}</span>
             </div>
-            <div className="flex justify-between items-baseline">
+            <div className="flex justify-between items-baseline gap-3">
               <span className="text-sm text-slate-600">{orderInfo.prod_desc}</span>
               <span className="text-xl font-bold text-blue-600">NT$ {orderInfo.trade_amt.toLocaleString()}</span>
             </div>
@@ -364,7 +514,10 @@ export default function PaymentPage() {
         {showCredit && showATM && (
           <div className="flex bg-white rounded-xl shadow-sm border border-slate-200/60 p-1.5">
             <button
-              onClick={() => { setActiveTab('credit'); setPayError(''); }}
+              onClick={() => {
+                setActiveTab('credit');
+                setPayError('');
+              }}
               className={cn(
                 'flex-1 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2',
                 activeTab === 'credit'
@@ -375,7 +528,10 @@ export default function PaymentPage() {
               <CreditCard className="w-4 h-4" /> 信用卡
             </button>
             <button
-              onClick={() => { setActiveTab('atm'); setPayError(''); }}
+              onClick={() => {
+                setActiveTab('atm');
+                setPayError('');
+              }}
               className={cn(
                 'flex-1 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2',
                 activeTab === 'atm'
@@ -409,7 +565,7 @@ export default function PaymentPage() {
                     maxLength={19}
                     placeholder="4147 6310 0000 0001"
                     value={cardNo}
-                    onChange={(e) => setCardNo(e.target.value)}
+                    onChange={event => setCardNo(event.target.value)}
                     className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-mono"
                   />
                 </div>
@@ -423,7 +579,7 @@ export default function PaymentPage() {
                       maxLength={5}
                       placeholder="MM/YY"
                       value={cardExpired}
-                      onChange={(e) => setCardExpired(e.target.value)}
+                      onChange={event => setCardExpired(event.target.value)}
                       className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-mono"
                     />
                   </div>
@@ -435,7 +591,7 @@ export default function PaymentPage() {
                       maxLength={4}
                       placeholder="CVV"
                       value={cardCvc}
-                      onChange={(e) => setCardCvc(e.target.value)}
+                      onChange={event => setCardCvc(event.target.value)}
                       className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-mono"
                     />
                   </div>
@@ -445,7 +601,7 @@ export default function PaymentPage() {
                   <label className="block text-xs text-slate-500 mb-1">分期方式</label>
                   <select
                     value={cardInst}
-                    onChange={(e) => setCardInst(e.target.value)}
+                    onChange={event => setCardInst(event.target.value)}
                     className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white"
                   >
                     <option value="1">一次付清</option>
@@ -482,9 +638,7 @@ export default function PaymentPage() {
                 )}
               </button>
 
-              <p className="text-center text-xs text-slate-400">
-                支援 Visa / MasterCard / JCB / 銀聯卡
-              </p>
+              <p className="text-center text-xs text-slate-400">支援 Visa / MasterCard / JCB / 銀聯卡</p>
             </motion.div>
           )}
 
@@ -503,11 +657,11 @@ export default function PaymentPage() {
                 <label className="block text-xs text-slate-500 mb-1">選擇轉帳銀行</label>
                 <select
                   value={bankType}
-                  onChange={(e) => setBankType(e.target.value)}
+                  onChange={event => setBankType(event.target.value)}
                   className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white"
                 >
                   <option value="">請選擇銀行</option>
-                  {BANK_OPTIONS.map((bank) => (
+                  {BANK_OPTIONS.map(bank => (
                     <option key={bank.code} value={bank.code}>
                       {bank.code} {bank.name}
                     </option>
@@ -538,16 +692,14 @@ export default function PaymentPage() {
                 )}
               </button>
 
-              <p className="text-center text-xs text-slate-400">
-                取號後請在期限內完成轉帳
-              </p>
+              <p className="text-center text-xs text-slate-400">取號後請在期限內完成轉帳</p>
             </motion.div>
           )}
         </AnimatePresence>
 
         {/* 安全保障提示 */}
         <p className="text-center text-xs text-slate-400 pb-4">
-          🔒 本交易由 PAYUNi 統一金流安全處理，卡號資料不經本站伺服器儲存
+          本交易由 PAYUNi 統一金流安全處理，卡號資料不經本站伺服器儲存。
         </p>
       </motion.div>
     </div>
