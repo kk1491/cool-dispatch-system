@@ -35,12 +35,7 @@ func SyncAdminFromConfig(db *gorm.DB, cfg config.Config) error {
 		return fmt.Errorf("config admin password must be at least %d characters", security.PasswordMinLength)
 	}
 
-	adminPasswordHash, err := security.HashPassword(adminPassword)
-	if err != nil {
-		return fmt.Errorf("hash config admin password: %w", err)
-	}
-
-	return upsertConfiguredAdminUser(db, adminName, adminPhone, adminPasswordHash)
+	return upsertConfiguredAdminUser(db, adminName, adminPhone, adminPassword)
 }
 
 // SyncDevTechnicianFromConfig 无条件将 config.yaml / 环境变量中的开发默认师傅配置同步到数据库。
@@ -154,17 +149,13 @@ func seedUsers(db *gorm.DB, cfg config.Config) error {
 		return fmt.Errorf("seed technician password is required and must be at least %d characters", security.PasswordMinLength)
 	}
 
-	adminPasswordHash, err := security.HashPassword(adminPassword)
-	if err != nil {
-		return fmt.Errorf("hash seed admin password: %w", err)
-	}
 	technicianPasswordHash, err := security.HashPassword(technicianPassword)
 	if err != nil {
 		return fmt.Errorf("hash seed technician password: %w", err)
 	}
 
 	return db.Transaction(func(tx *gorm.DB) error {
-		if err := upsertConfiguredAdminUser(tx, adminName, adminPhone, adminPasswordHash); err != nil {
+		if err := upsertConfiguredAdminUser(tx, adminName, adminPhone, adminPassword); err != nil {
 			return err
 		}
 
@@ -181,25 +172,44 @@ func seedUsers(db *gorm.DB, cfg config.Config) error {
 }
 
 // upsertConfiguredAdminUser 确保数据库中的管理员账号与当前配置保持一致。
-// 若已存在管理员，则覆盖名称、手机号与密码；若不存在，则创建新的管理员账号。
-func upsertConfiguredAdminUser(db *gorm.DB, adminName, adminPhone, adminPasswordHash string) error {
+// 仅当手机号或密码发生真实变化时才吊销现有 token，避免服务重启/更新后无故退出登录。
+func upsertConfiguredAdminUser(db *gorm.DB, adminName, adminPhone, adminPassword string) error {
+	adminPasswordHash, err := security.HashPassword(adminPassword)
+	if err != nil {
+		return fmt.Errorf("hash config admin password: %w", err)
+	}
+
 	var admin models.User
-	err := db.Where("role = ?", "admin").Order("id asc").First(&admin).Error
+	err = db.Where("role = ?", "admin").Order("id asc").First(&admin).Error
 	if err == nil {
 		if err := ensureSeedAdminPhoneAvailable(db, admin.ID, adminPhone); err != nil {
 			return err
 		}
-		updates := map[string]any{
-			"name":          adminName,
-			"phone":         adminPhone,
-			"password_hash": adminPasswordHash,
-			"role":          "admin",
+
+		adminNameChanged := admin.Name != adminName
+		adminPhoneChanged := admin.Phone != adminPhone
+		adminPasswordChanged := !security.VerifyPassword(adminPassword, admin.PasswordHash)
+		if !adminNameChanged && !adminPhoneChanged && !adminPasswordChanged {
+			return nil
 		}
+
+		updates := map[string]any{
+			"name":  adminName,
+			"phone": adminPhone,
+			"role":  "admin",
+		}
+		if adminPasswordChanged {
+			updates["password_hash"] = adminPasswordHash
+		}
+
 		if err := db.Model(&admin).Updates(updates).Error; err != nil {
 			return fmt.Errorf("update configured admin user: %w", err)
 		}
-		if err := db.Where("user_id = ?", admin.ID).Delete(&models.AuthToken{}).Error; err != nil {
-			return fmt.Errorf("revoke configured admin tokens: %w", err)
+
+		if adminPhoneChanged || adminPasswordChanged {
+			if err := db.Where("user_id = ?", admin.ID).Delete(&models.AuthToken{}).Error; err != nil {
+				return fmt.Errorf("revoke configured admin tokens: %w", err)
+			}
 		}
 		return nil
 	}
