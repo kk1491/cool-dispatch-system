@@ -47,10 +47,10 @@ const paymentOrderConfirmationTimeout = 15 * time.Minute
 
 // 这些文案用于区分“网关确认中”与“已超时可重建”两种状态。
 const (
-	paymentOrderCreditPendingMessage = "支付结果确认中，请稍后刷新页面确认"
-	paymentOrderATMPendingMessage    = "取号结果确认中，请稍后刷新页面确认"
-	paymentOrderTimeoutMessage       = "支付结果确认超时，请联系管理员重新建立支付链接"
-	paymentOrderAlreadyPaidMessage   = "关联预约已完成收款，此支付单已关闭"
+	paymentOrderCreditPendingMessage = "支付結果確認中，請稍後重新整理頁面確認"
+	paymentOrderATMPendingMessage    = "取號結果確認中，請稍後重新整理頁面確認"
+	paymentOrderTimeoutMessage       = "支付結果確認逾時，請聯絡管理員重新建立支付連結"
+	paymentOrderAlreadyPaidMessage   = "關聯預約已完成收款，此支付單已關閉"
 )
 
 // paymentOrderActionError 让处理器能把业务校验错误映射成明确的 HTTP 状态码。
@@ -107,7 +107,7 @@ type createPaymentOrderRequest struct {
 func (h *Handler) CreatePaymentOrder(c *gin.Context) {
 	// 检查 PAYUNi 配置
 	if h.payuniClient == nil {
-		respondMessage(c, http.StatusServiceUnavailable, "PAYUNi 支付未配置")
+		respondMessage(c, http.StatusServiceUnavailable, "PAYUNi 支付未設定")
 		return
 	}
 
@@ -116,14 +116,14 @@ func (h *Handler) CreatePaymentOrder(c *gin.Context) {
 		return
 	}
 	if body.AppointmentID == 0 {
-		respondMessage(c, http.StatusBadRequest, "支付订单必须绑定预约")
+		respondMessage(c, http.StatusBadRequest, "支付訂單必須綁定預約")
 		return
 	}
 
 	// 通过认证中间件获取当前管理员用户（中间件存储 key 为 "user"）
 	user, err := currentUser(c)
 	if err != nil {
-		respondMessage(c, http.StatusUnauthorized, "未获取到用户信息")
+		respondMessage(c, http.StatusUnauthorized, "未取得使用者資訊")
 		return
 	}
 
@@ -131,7 +131,7 @@ func (h *Handler) CreatePaymentOrder(c *gin.Context) {
 	paymentToken, err := generatePaymentToken()
 	if err != nil {
 		logger.Errorf("生成支付令牌失败: %v", err)
-		respondMessage(c, http.StatusInternalServerError, "创建支付订单失败")
+		respondMessage(c, http.StatusInternalServerError, "建立支付訂單失敗")
 		return
 	}
 
@@ -185,7 +185,7 @@ func (h *Handler) CreatePaymentOrder(c *gin.Context) {
 			return
 		}
 		logger.Errorf("创建支付订单数据库写入失败: %v", err)
-		respondMessage(c, http.StatusInternalServerError, "创建支付订单失败")
+		respondMessage(c, http.StatusInternalServerError, "建立支付訂單失敗")
 		return
 	}
 
@@ -206,7 +206,7 @@ func (h *Handler) CreatePaymentOrder(c *gin.Context) {
 func (h *Handler) ListPaymentOrders(c *gin.Context) {
 	var orders []models.PaymentOrder
 	if err := h.db.Order("created_at desc").Find(&orders).Error; err != nil {
-		respondMessage(c, http.StatusInternalServerError, "查询支付订单失败")
+		respondMessage(c, http.StatusInternalServerError, "查詢支付訂單失敗")
 		return
 	}
 	for i := range orders {
@@ -286,14 +286,14 @@ func (h *Handler) HandleTokenCreditPay(c *gin.Context) {
 			return
 		}
 		if order.Status == "paying" {
-			respondMessage(c, http.StatusConflict, "订单正在处理，请稍后刷新确认结果")
+			respondMessage(c, http.StatusConflict, "訂單處理中，請稍後重新整理確認結果")
 			return
 		}
-		respondMessage(c, http.StatusConflict, "订单状态不允许支付: "+order.Status)
+		respondMessage(c, http.StatusConflict, "訂單狀態不允許支付: "+order.Status)
 		return
 	}
 	if order.PaymentMethod != "credit" && order.PaymentMethod != "both" {
-		respondMessage(c, http.StatusBadRequest, "此订单不支持信用卡支付")
+		respondMessage(c, http.StatusBadRequest, "此訂單不支援信用卡支付")
 		return
 	}
 	// 先以原子状态迁移占住该订单，阻止双击、并发请求或浏览器重试把同一笔单再次送进 PAYUNi。
@@ -305,7 +305,7 @@ func (h *Handler) HandleTokenCreditPay(c *gin.Context) {
 			return
 		}
 		logger.Errorf("占用支付订单失败 (OrderID=%d): %v", order.ID, err)
-		respondMessage(c, http.StatusInternalServerError, "支付订单状态更新失败")
+		respondMessage(c, http.StatusInternalServerError, "支付訂單狀態更新失敗")
 		return
 	}
 	if !claimed {
@@ -314,14 +314,14 @@ func (h *Handler) HandleTokenCreditPay(c *gin.Context) {
 			return
 		}
 		if latest != nil && latest.Status == "paying" {
-			respondMessage(c, http.StatusConflict, "订单正在处理，请稍后刷新确认结果")
+			respondMessage(c, http.StatusConflict, "訂單處理中，請稍後重新整理確認結果")
 			return
 		}
 		if latest != nil {
-			respondMessage(c, http.StatusConflict, "订单状态不允许支付: "+latest.Status)
+			respondMessage(c, http.StatusConflict, "訂單狀態不允許支付: "+latest.Status)
 			return
 		}
-		respondMessage(c, http.StatusConflict, "订单状态已变化，请刷新后重试")
+		respondMessage(c, http.StatusConflict, "訂單狀態已變更，請重新整理後再試")
 		return
 	}
 	order.Status = "paying"
@@ -383,7 +383,7 @@ func (h *Handler) HandleTokenCreditPay(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, gin.H{
 			"status":  resp.Status,
-			"message": "支付请求失败: " + resp.Status,
+			"message": "支付請求失敗: " + resp.Status,
 		})
 		return
 	}
@@ -436,7 +436,7 @@ func (h *Handler) HandleTokenCreditPay(c *gin.Context) {
 
 	if err := h.updatePaymentOrderState(order.ID, updates, "轉帳"); err != nil {
 		logger.Errorf("写入信用卡支付结果失败 (OrderID=%d): %v", order.ID, err)
-		respondMessage(c, http.StatusInternalServerError, "支付结果写入失败")
+		respondMessage(c, http.StatusInternalServerError, "支付結果寫入失敗")
 		return
 	}
 
@@ -475,7 +475,7 @@ type tokenATMPayRequest struct {
 //  4. 等待客户去 ATM 转账 → PAYUNi 异步通知 → 更新订单状态
 func (h *Handler) HandleTokenATMPay(c *gin.Context) {
 	if h.payuniClient == nil {
-		respondMessage(c, http.StatusServiceUnavailable, "PAYUNi 支付未配置")
+		respondMessage(c, http.StatusServiceUnavailable, "PAYUNi 支付未設定")
 		return
 	}
 
@@ -495,7 +495,7 @@ func (h *Handler) HandleTokenATMPay(c *gin.Context) {
 			// 已取号，返回现有帐号信息
 			c.JSON(http.StatusOK, gin.H{
 				"status":          "SUCCESS",
-				"message":         "虚拟帐号已生成",
+				"message":         "虛擬帳號已產生",
 				"pay_no":          order.PayNo,
 				"trade_amt":       fmt.Sprintf("%d", order.TradeAmt),
 				"atm_expire_date": order.ATMExpireDate,
@@ -503,14 +503,14 @@ func (h *Handler) HandleTokenATMPay(c *gin.Context) {
 			return
 		}
 		if order.Status == "paying" {
-			respondMessage(c, http.StatusConflict, "订单正在处理，请稍后刷新确认结果")
+			respondMessage(c, http.StatusConflict, "訂單處理中，請稍後重新整理確認結果")
 			return
 		}
-		respondMessage(c, http.StatusConflict, "订单状态不允许取号: "+order.Status)
+		respondMessage(c, http.StatusConflict, "訂單狀態不允許取號: "+order.Status)
 		return
 	}
 	if order.PaymentMethod != "atm" && order.PaymentMethod != "both" {
-		respondMessage(c, http.StatusBadRequest, "此订单不支持 ATM 转账")
+		respondMessage(c, http.StatusBadRequest, "此訂單不支援 ATM 轉帳")
 		return
 	}
 	// 与信用卡一致，先原子占位，避免同一链接被并发重复取号。
@@ -522,7 +522,7 @@ func (h *Handler) HandleTokenATMPay(c *gin.Context) {
 			return
 		}
 		logger.Errorf("占用 ATM 支付订单失败 (OrderID=%d): %v", order.ID, err)
-		respondMessage(c, http.StatusInternalServerError, "支付订单状态更新失败")
+		respondMessage(c, http.StatusInternalServerError, "支付訂單狀態更新失敗")
 		return
 	}
 	if !claimed {
@@ -533,7 +533,7 @@ func (h *Handler) HandleTokenATMPay(c *gin.Context) {
 		if latest != nil && latest.Status == "paying" && latest.PayNo != "" {
 			c.JSON(http.StatusOK, gin.H{
 				"status":          "SUCCESS",
-				"message":         "虚拟帐号已生成",
+				"message":         "虛擬帳號已產生",
 				"pay_no":          latest.PayNo,
 				"trade_amt":       fmt.Sprintf("%d", latest.TradeAmt),
 				"atm_expire_date": latest.ATMExpireDate,
@@ -541,14 +541,14 @@ func (h *Handler) HandleTokenATMPay(c *gin.Context) {
 			return
 		}
 		if latest != nil && latest.Status == "paying" {
-			respondMessage(c, http.StatusConflict, "订单正在处理，请稍后刷新确认结果")
+			respondMessage(c, http.StatusConflict, "訂單處理中，請稍後重新整理確認結果")
 			return
 		}
 		if latest != nil {
-			respondMessage(c, http.StatusConflict, "订单状态不允许取号: "+latest.Status)
+			respondMessage(c, http.StatusConflict, "訂單狀態不允許取號: "+latest.Status)
 			return
 		}
-		respondMessage(c, http.StatusConflict, "订单状态已变化，请刷新后重试")
+		respondMessage(c, http.StatusConflict, "訂單狀態已變更，請重新整理後再試")
 		return
 	}
 	order.Status = "paying"
@@ -596,7 +596,7 @@ func (h *Handler) HandleTokenATMPay(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, gin.H{
 			"status":  resp.Status,
-			"message": "ATM 取号失败: " + resp.Status,
+			"message": "ATM 取號失敗: " + resp.Status,
 		})
 		return
 	}
@@ -631,7 +631,7 @@ func (h *Handler) HandleTokenATMPay(c *gin.Context) {
 		"raw_response":    rawJSON,
 	}, ""); err != nil {
 		logger.Errorf("写入 ATM 取号结果失败 (OrderID=%d): %v", order.ID, err)
-		respondMessage(c, http.StatusInternalServerError, "ATM 结果写入失败")
+		respondMessage(c, http.StatusInternalServerError, "ATM 結果寫入失敗")
 		return
 	}
 
@@ -659,7 +659,7 @@ func (h *Handler) HandleTokenATMPay(c *gin.Context) {
 //   - 根据 PaymentType（1=信用卡 / 2=ATM）和 TradeStatus 更新订单状态
 func (h *Handler) HandlePayuniNotify(c *gin.Context) {
 	if h.payuniClient == nil {
-		respondMessage(c, http.StatusServiceUnavailable, "PAYUNi 支付未配置")
+		respondMessage(c, http.StatusServiceUnavailable, "PAYUNi 支付未設定")
 		return
 	}
 
@@ -772,23 +772,23 @@ func (h *Handler) validatePaymentOrderAppointmentWithTx(tx *gorm.DB, appointment
 	var appointment models.Appointment
 	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&appointment, "id = ?", appointmentID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return fmt.Errorf("关联预约不存在")
+			return fmt.Errorf("關聯預約不存在")
 		}
-		return fmt.Errorf("查询关联预约失败")
+		return fmt.Errorf("查詢關聯預約失敗")
 	}
 	if appointment.PaymentReceived {
-		return fmt.Errorf("关联预约已确认收款")
+		return fmt.Errorf("關聯預約已確認收款")
 	}
 	if normalizePaymentMethod(appointment.PaymentMethod) == "無收款" {
-		return fmt.Errorf("免收款预约不可创建支付订单")
+		return fmt.Errorf("無收款預約不可建立支付訂單")
 	}
 	// 当前预约主表只支持“未收/已确认收款”两态，绑定支付订单时必须保持全额收款闭环，
 	// 避免把外部支付引入成系统尚未支持的半收款状态。
 	if appointment.TotalAmount != tradeAmt {
-		return fmt.Errorf("支付金额必须与预约应收金额一致")
+		return fmt.Errorf("支付金額必須與預約應收金額一致")
 	}
 	if !isOneOf(appointment.Status, "completed", "cancelled") {
-		return fmt.Errorf("仅已完成或已取消的预约可绑定支付订单")
+		return fmt.Errorf("僅已完成或已取消的預約可綁定支付訂單")
 	}
 	return nil
 }
@@ -820,9 +820,9 @@ func (h *Handler) findBlockingPaymentOrderForAppointmentTx(tx *gorm.DB, appointm
 func buildBlockingPaymentOrderMessage(order models.PaymentOrder) string {
 	switch order.Status {
 	case "paying":
-		return "该预约已有处理中支付单，请勿重复创建"
+		return "該預約已有處理中的支付單，請勿重複建立"
 	default:
-		return "该预约已有待支付订单，请勿重复创建"
+		return "該預約已有待支付訂單，請勿重複建立"
 	}
 }
 
@@ -878,20 +878,20 @@ func (h *Handler) tryClaimPaymentOrder(orderID uint) (bool, *models.PaymentOrder
 				Where("id = ? AND status IN ?", latest.ID, []string{"pending", "paying"}).
 				Updates(map[string]any{
 					"status":       "cancelled",
-					"res_code_msg": "支付订单必须绑定预约，当前链接已失效",
+					"res_code_msg": "支付訂單必須綁定預約，目前連結已失效",
 				})
 			if result.Error != nil {
 				return result.Error
 			}
 			if result.RowsAffected == 1 {
 				latest.Status = "cancelled"
-				latest.ResCodeMsg = "支付订单必须绑定预约，当前链接已失效"
+				latest.ResCodeMsg = "支付訂單必須綁定預約，目前連結已失效"
 			} else if err := tx.First(&latest, "id = ?", latest.ID).Error; err != nil {
 				return err
 			}
 			return &paymentOrderActionError{
 				status:  http.StatusConflict,
-				message: "支付订单必须绑定预约，当前链接已失效",
+				message: "支付訂單必須綁定預約，目前連結已失效",
 			}
 		}
 		if latest.Status != "pending" {
@@ -912,7 +912,7 @@ func (h *Handler) tryClaimPaymentOrder(orderID uint) (bool, *models.PaymentOrder
 		if blockingOrder != nil {
 			return &paymentOrderActionError{
 				status:  http.StatusConflict,
-				message: "该预约已有其他支付单处理中，请勿重复付款",
+				message: "該預約已有其他支付單處理中，請勿重複付款",
 			}
 		}
 
@@ -1068,14 +1068,14 @@ func (h *Handler) syncPaymentOrderAppointmentState(db *gorm.DB, order *models.Pa
 			Where("id = ? AND status IN ?", order.ID, []string{"pending", "paying"}).
 			Updates(map[string]any{
 				"status":       "cancelled",
-				"res_code_msg": "支付订单必须绑定预约，当前链接已失效",
+				"res_code_msg": "支付訂單必須綁定預約，目前連結已失效",
 			})
 		if result.Error != nil {
 			return result.Error
 		}
 		if result.RowsAffected == 1 {
 			order.Status = "cancelled"
-			order.ResCodeMsg = "支付订单必须绑定预约，当前链接已失效"
+			order.ResCodeMsg = "支付訂單必須綁定預約，目前連結已失效"
 			return nil
 		}
 
@@ -1238,14 +1238,14 @@ func (h *Handler) findPaymentOrderByToken(c *gin.Context) (*models.PaymentOrder,
 	var order models.PaymentOrder
 	if err := h.db.First(&order, "payment_token = ?", payToken).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			respondMessage(c, http.StatusNotFound, "支付订单不存在或链接无效")
+			respondMessage(c, http.StatusNotFound, "支付訂單不存在或連結無效")
 		} else {
-			respondMessage(c, http.StatusInternalServerError, "查询支付订单失败")
+			respondMessage(c, http.StatusInternalServerError, "查詢支付訂單失敗")
 		}
 		return nil, err
 	}
 	if err := h.refreshPaymentOrderStatus(&order); err != nil {
-		respondMessage(c, http.StatusInternalServerError, "刷新支付订单状态失败")
+		respondMessage(c, http.StatusInternalServerError, "重新整理支付訂單狀態失敗")
 		return nil, err
 	}
 

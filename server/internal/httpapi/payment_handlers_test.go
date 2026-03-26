@@ -334,7 +334,7 @@ func TestCreatePaymentOrderRequiresAppointmentBinding(t *testing.T) {
 
 	var payload messageResponse
 	decodeJSONBody(t, recorder, &payload)
-	if !strings.Contains(payload.Message, "绑定预约") {
+	if !strings.Contains(payload.Message, "綁定預約") {
 		t.Fatalf("expected binding appointment error, got %q", payload.Message)
 	}
 

@@ -1696,7 +1696,7 @@ func (h *Handler) UpdateWebhookEnabled(c *gin.Context) {
 		return
 	}
 
-	description := "管理员控制 LINE webhook 处理开关；实际启用仍取决于 secret 与公网基址"
+	description := "管理員控制 LINE webhook 處理開關；實際啟用仍取決於 secret 與公開基址"
 	item := models.AppSetting{
 		Key:         "line_webhook_enabled",
 		Value:       strconv.FormatBool(payload.Enabled),
@@ -2155,19 +2155,19 @@ func (h *Handler) buildSettingsResponse(settings []models.AppSetting) settingsRe
 	}
 	effectiveEnabled := webhookEnabled && hasLineChannelSecret && h.hasPublicWebhookBaseURL
 
-	statusMessage := "管理员已启用 webhook，且 LINE secret 与公网地址均已就绪。"
+	statusMessage := "管理員已啟用 webhook，且 LINE secret 與公開網址均已就緒。"
 	switch {
 	case !webhookEnabled:
-		statusMessage = "管理员已停用 webhook；即使外部平台继续回调，服务端也会拒绝处理。"
+		statusMessage = "管理員已停用 webhook；即使外部平台持續回呼，服務端也會拒絕處理。"
 	case !hasLineChannelSecret && !h.hasPublicWebhookBaseURL:
-		statusMessage = "已打开 webhook 开关，但缺少 LINE_CHANNEL_SECRET 与公网基址，当前无法对外提供可用回调。"
+		statusMessage = "已開啟 webhook 開關，但缺少 LINE_CHANNEL_SECRET 與公開基址，目前無法對外提供可用回呼。"
 	case !hasLineChannelSecret:
-		statusMessage = "已打开 webhook 开关，但缺少 LINE_CHANNEL_SECRET，当前无法校验 LINE webhook 签名。"
+		statusMessage = "已開啟 webhook 開關，但缺少 LINE_CHANNEL_SECRET，目前無法校驗 LINE webhook 簽章。"
 	case !h.hasPublicWebhookBaseURL:
-		statusMessage = "已打开 webhook 开关，但当前仅有本机调试地址，LINE 平台仍无法从公网回调。"
+		statusMessage = "已開啟 webhook 開關，但目前僅有本機除錯位址，LINE 平台仍無法從公開網路回呼。"
 	}
 
-	dependencySummary := "启用条件：管理员开关开启、已配置 LINE_CHANNEL_SECRET、并能生成公网可访问的 webhook URL。"
+	dependencySummary := "啟用條件：管理員開關已開啟、已設定 LINE_CHANNEL_SECRET，且能產生公開可存取的 webhook URL。"
 
 	return settingsResponse{
 		ReminderDays: reminderDaysFromSettings(settings),

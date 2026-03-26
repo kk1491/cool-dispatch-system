@@ -126,7 +126,7 @@ export default function ReviewPage({ onSubmit }: ReviewPageProps) {
       return;
     }
 
-    const shareText = '我剛請了CoolDispatch來洗冷氣，服務很讚！推薦給你 👉';
+    const shareText = '我剛請了 CoolDispatch 來洗冷氣，服務很讚！推薦給你 👉';
     const shareUrl = 'https://cooldispatch.com';
     const lineShareUrl = `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`;
     window.open(lineShareUrl, '_blank');
