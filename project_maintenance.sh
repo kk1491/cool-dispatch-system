@@ -775,4 +775,5 @@ main() {
 # 捕获中断信号，保证自动轮询模式可以友好退出。
 trap 'echo ""; log_warning "脚本已停止"; exit 0' INT TERM
 
+
 main "$@"
