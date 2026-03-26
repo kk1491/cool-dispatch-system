@@ -10,6 +10,7 @@
 package backup
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"fmt"
@@ -54,6 +55,9 @@ type pgConnInfo struct {
 	dbName   string // 数据库名称
 }
 
+const defaultPostgresContainerName = "cool-dispatch-postgres"
+const defaultPostgresContainerPort = "5432"
+
 // parseDatabaseURL 从 PostgreSQL 连接字符串中提取各项连接参数。
 // 支持标准 postgres:// URI 格式。
 func parseDatabaseURL(dbURL string) (*pgConnInfo, error) {
@@ -89,7 +93,8 @@ func parseDatabaseURL(dbURL string) (*pgConnInfo, error) {
 }
 
 // StartScheduler 在独立协程中启动定时备份调度器。
-// 启动后立即执行一次备份，后续按 cfg.Interval 间隔定时触发。
+// 启动后会先检查今天是否已经生成过备份；若已备份则直接等待下次到期时间，
+// 若今天尚未备份则立即补做一次，确保“每天最多一次”在重启后依然成立。
 // 通过 ctx 取消可优雅停止调度器。
 //
 // 使用示例：
@@ -124,25 +129,64 @@ func StartScheduler(ctx context.Context, cfg Config) {
 		logger.Infof("[backup] 定时备份调度器已启动，备份间隔: %v，最多保留: %d 份，目录: %s",
 			cfg.Interval, cfg.MaxBackups, cfg.BackupDir)
 
-		// 启动后立即执行一次备份
-		runBackup(cfg)
-
-		// 使用 ticker 定时触发后续备份
-		ticker := time.NewTicker(cfg.Interval)
-		defer ticker.Stop()
-
 		for {
+			// 每轮都重新计算下次备份到期时间，确保服务重启后不会因为固定 ticker 导致重复备份。
+			waitDuration, scheduleLog := nextBackupDelay(cfg, time.Now())
+			if scheduleLog != "" {
+				logger.Infof("[backup] %s", scheduleLog)
+			}
+
+			timer := time.NewTimer(waitDuration)
 			select {
 			case <-ctx.Done():
-				// 收到取消信号，优雅退出
+				// 收到取消信号后，先回收 timer，避免 goroutine 或 channel 残留。
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
 				logger.Infof("[backup] 定时备份调度器已停止")
 				return
-			case <-ticker.C:
-				// 定时触发备份
+			case <-timer.C:
+				// 到期后执行一次备份；下轮循环会再次判断是否需要跳过。
 				runBackup(cfg)
 			}
 		}
 	}()
+}
+
+// nextBackupDelay 计算距离“下次允许备份”还需要等待多久。
+// 规则如下：
+// 1. 若当前数据库今天还没有备份记录，则立即执行，返回 0。
+// 2. 若今天已经备份过，则等待“最近一次备份时间 + interval”后再执行。
+// 这样可保证同一天多次重启时不会再次触发备份，同时仍保持每天一次的节奏。
+func nextBackupDelay(cfg Config, now time.Time) (time.Duration, string) {
+	connInfo, err := parseDatabaseURL(cfg.DatabaseURL)
+	if err != nil {
+		logger.Errorf("[backup] 解析数据库连接失败，改为立即尝试备份: %v", err)
+		return 0, ""
+	}
+
+	latestBackupTime, found := findLatestBackupTime(cfg.BackupDir, connInfo.dbName)
+	if !found {
+		return 0, "尚未发现历史备份，将立即执行首次备份"
+	}
+
+	if sameDay(latestBackupTime, now) {
+		nextTime := latestBackupTime.Add(cfg.Interval)
+		waitDuration := time.Until(nextTime)
+		if waitDuration < 0 {
+			waitDuration = 0
+		}
+		return waitDuration, fmt.Sprintf(
+			"今天已备份过，最近一次备份时间: %s；下次最早备份时间: %s",
+			latestBackupTime.Format("2006-01-02 15:04:05"),
+			nextTime.Format("2006-01-02 15:04:05"),
+		)
+	}
+
+	return 0, "今天尚未备份，将立即执行补偿备份"
 }
 
 // runBackup 执行一次完整的备份流程：
@@ -191,36 +235,22 @@ func runBackup(cfg Config) {
 // dumpAndCompress 使用 pg_dump 导出数据库并通过 gzip 压缩写入目标文件。
 // pg_dump 的 stdout 直接通过管道连接到 gzip 压缩器，避免中间文件占用磁盘。
 func dumpAndCompress(info *pgConnInfo, outputPath string) error {
-	// 检查 pg_dump 是否可用
-	pgDumpPath, err := exec.LookPath("pg_dump")
+	// 优先使用宿主机 pg_dump；若宿主机未安装，则自动回退到 PostgreSQL 容器内执行。
+	cmd, runnerDesc, err := buildDumpCommand(info)
 	if err != nil {
-		return fmt.Errorf("找不到 pg_dump 命令，请确认已安装 PostgreSQL 客户端工具: %w", err)
+		return err
 	}
-
-	// 构造 pg_dump 命令
-	// --no-owner: 不输出 ALTER OWNER 语句，方便在不同环境恢复
-	// --no-privileges: 不输出 GRANT/REVOKE 语句
-	// --clean: 输出 DROP 语句，恢复时先清理旧对象
-	// --if-exists: DROP 语句加 IF EXISTS，避免首次恢复报错
-	cmd := exec.Command(pgDumpPath,
-		"-h", info.host,
-		"-p", info.port,
-		"-U", info.user,
-		"-d", info.dbName,
-		"--no-owner",
-		"--no-privileges",
-		"--clean",
-		"--if-exists",
-	)
-
-	// 通过 PGPASSWORD 环境变量传递密码，避免交互式输入
-	cmd.Env = append(os.Environ(), "PGPASSWORD="+info.password)
+	logger.Infof("[backup] 本次备份使用导出方式: %s", runnerDesc)
 
 	// 获取 pg_dump 的 stdout 管道
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("创建 pg_dump stdout 管道失败: %w", err)
 	}
+
+	// 收集 stderr，便于在备份失败时快速看到 pg_dump 的原始报错。
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 
 	// 创建目标压缩文件
 	outFile, err := os.Create(outputPath)
@@ -274,6 +304,10 @@ func dumpAndCompress(info *pgConnInfo, outputPath string) error {
 
 	// 等待 pg_dump 进程退出
 	if err := cmd.Wait(); err != nil {
+		errMsg := strings.TrimSpace(stderr.String())
+		if errMsg != "" {
+			return fmt.Errorf("pg_dump 执行失败: %w: %s", err, errMsg)
+		}
 		return fmt.Errorf("pg_dump 执行失败: %w", err)
 	}
 
@@ -283,6 +317,155 @@ func dumpAndCompress(info *pgConnInfo, outputPath string) error {
 	}
 
 	return nil
+}
+
+// buildDumpCommand 构造 pg_dump 导出命令。
+// 优先级如下：
+// 1. 若宿主机已安装 pg_dump，则直接在宿主机执行。
+// 2. 若宿主机缺少 pg_dump，但 Docker 与 PostgreSQL 容器可用，则回退到容器内执行。
+// 3. 若两者都不可用，则返回明确错误，提醒补齐运行环境。
+func buildDumpCommand(info *pgConnInfo) (*exec.Cmd, string, error) {
+	dumpArgs := []string{
+		"-h", info.host,
+		"-p", info.port,
+		"-U", info.user,
+		"-d", info.dbName,
+		"--no-owner",
+		"--no-privileges",
+		"--clean",
+		"--if-exists",
+	}
+
+	if pgDumpPath, err := exec.LookPath("pg_dump"); err == nil {
+		cmd := exec.Command(pgDumpPath, dumpArgs...)
+		cmd.Env = append(os.Environ(), "PGPASSWORD="+info.password)
+		return cmd, "宿主機 pg_dump", nil
+	}
+
+	dockerPath, err := exec.LookPath("docker")
+	if err != nil {
+		return nil, "", fmt.Errorf("找不到 pg_dump，且系統也無法使用 Docker，無法完成資料庫備份")
+	}
+
+	containerName := strings.TrimSpace(os.Getenv("POSTGRES_CONTAINER_NAME"))
+	if containerName == "" {
+		containerName = defaultPostgresContainerName
+	}
+
+	if !isDockerContainerRunning(containerName) {
+		return nil, "", fmt.Errorf("找不到 pg_dump，且 PostgreSQL 容器未在運行: %s", containerName)
+	}
+
+	// 容器內執行 pg_dump 時，若原始連線配置指向宿主機 localhost:9101，
+	// 需要切換為容器內 PostgreSQL 的監聽位址與容器端口，否則會在容器內錯誤地回連宿主機端口。
+	dockerConnInfo := normalizeConnInfoForDockerExec(info)
+	dockerDumpArgs := []string{
+		"-h", dockerConnInfo.host,
+		"-p", dockerConnInfo.port,
+		"-U", dockerConnInfo.user,
+		"-d", dockerConnInfo.dbName,
+		"--no-owner",
+		"--no-privileges",
+		"--clean",
+		"--if-exists",
+	}
+
+	dockerArgs := []string{
+		"exec",
+		"-e", "PGPASSWORD=" + dockerConnInfo.password,
+		containerName,
+		"pg_dump",
+	}
+	dockerArgs = append(dockerArgs, dockerDumpArgs...)
+
+	return exec.Command(dockerPath, dockerArgs...), fmt.Sprintf("Docker 容器 %s 內的 pg_dump", containerName), nil
+}
+
+// normalizeConnInfoForDockerExec 将宿主机视角的数据库地址改写为容器内可访问的地址。
+// 当前项目 PostgreSQL 默认运行在同一个容器内，因此 localhost / 127.0.0.1 / ::1
+// 都应改为容器内环回地址，并使用容器端口 5432（或 POSTGRES_CONTAINER_PORT 指定值）。
+func normalizeConnInfoForDockerExec(info *pgConnInfo) *pgConnInfo {
+	normalized := *info
+
+	switch strings.TrimSpace(strings.ToLower(normalized.host)) {
+	case "", "localhost", "127.0.0.1", "::1":
+		normalized.host = "127.0.0.1"
+		containerPort := strings.TrimSpace(os.Getenv("POSTGRES_CONTAINER_PORT"))
+		if containerPort == "" {
+			containerPort = defaultPostgresContainerPort
+		}
+		normalized.port = containerPort
+	}
+
+	if normalized.port == "" {
+		normalized.port = defaultPostgresContainerPort
+	}
+
+	return &normalized
+}
+
+// isDockerContainerRunning 检查目标 Docker 容器是否正在运行。
+// 这里只作为备份的兜底判断，出现命令失败时直接按“不可用”处理即可。
+func isDockerContainerRunning(containerName string) bool {
+	output, err := exec.Command("docker", "ps", "--format", "{{.Names}}").Output()
+	if err != nil {
+		return false
+	}
+
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		if strings.TrimSpace(line) == containerName {
+			return true
+		}
+	}
+
+	return false
+}
+
+// findLatestBackupTime 扫描指定数据库的备份文件，并返回最新一份备份的修改时间。
+// 若没有找到任何备份文件，则返回 false，供调度器判断是否需要首次备份。
+func findLatestBackupTime(backupDir string, dbName string) (time.Time, bool) {
+	entries, err := os.ReadDir(backupDir)
+	if err != nil {
+		return time.Time{}, false
+	}
+
+	prefix := dbName + "_"
+	suffix := ".sql.gz"
+	var latest time.Time
+	found := false
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, suffix) {
+			continue
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		// 失败中断时可能残留 0-byte 空文件，这类文件不能视为有效备份，
+		// 否则重启后会误判“今天已完成备份”，导致当天不再重试。
+		if info.Size() <= 0 {
+			continue
+		}
+
+		if !found || info.ModTime().After(latest) {
+			latest = info.ModTime()
+			found = true
+		}
+	}
+
+	return latest, found
+}
+
+// sameDay 判断两个时间是否处于同一个本地自然日。
+// 备份重复判定采用自然日维度，更符合“每天只备份一次”的业务语义。
+func sameDay(left time.Time, right time.Time) bool {
+	leftYear, leftMonth, leftDay := left.Date()
+	rightYear, rightMonth, rightDay := right.Date()
+	return leftYear == rightYear && leftMonth == rightMonth && leftDay == rightDay
 }
 
 // cleanOldBackups 清理超出保留数量的旧备份文件。

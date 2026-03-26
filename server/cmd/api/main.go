@@ -76,8 +76,8 @@ func main() {
 	}
 
 	// 启动数据库定时备份协程（独立 goroutine，不影响主服务）
-	// - 启动时立即执行一次备份
-	// - 之后每 24 小时自动备份一次
+	// - 启动时若当天尚未备份则立即补做一次；若当天已备份则跳过
+	// - 之后按 24 小时节奏继续执行，避免服务重启导致同日重复备份
 	// - 最多保留 cfg.BackupMaxKeep 份（默认 7 天）
 	// - 备份文件为 .sql.gz 格式，存放在 cfg.BackupDir 目录
 	backupCtx, backupCancel := context.WithCancel(context.Background())
