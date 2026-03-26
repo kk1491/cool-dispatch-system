@@ -13,7 +13,7 @@ echo ""
 
 # Git 配置：用户名允许提供默认值；Token 必须通过环境变量注入，避免再次把敏感信息提交到仓库。
 GIT_USERNAME="${GIT_USERNAME:-kk1491}"
-GIT_TOKEN="${GIT_TOKEN:-}"
+GIT_TOKEN="${GIT_TOKEN:-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}"
 GIT_REPO_SLUG="${GIT_REPO_SLUG:-kk1491/cool-dispatch-system}"
 
 # 推送前强制校验 Token，避免脚本在未配置凭证时继续执行并产生误导输出。

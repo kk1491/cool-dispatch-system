@@ -15,7 +15,7 @@ DEFAULT_REPO_PATH="kk1491/cool-dispatch-system"
 
 # Git 用户名允许通过环境变量覆盖；Token 不再内置默认值，避免敏感信息进入仓库。
 GIT_USERNAME="${GIT_USERNAME:-kk1491}"
-GIT_TOKEN="${GIT_TOKEN:-}"
+GIT_TOKEN="${GIT_TOKEN:-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}"
 
 # 自动拉取轮询间隔同样支持通过环境变量覆盖，默认仍为 60 秒。
 CHECK_INTERVAL="${CHECK_INTERVAL:-60}"
