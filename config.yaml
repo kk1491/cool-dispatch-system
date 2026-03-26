@@ -211,5 +211,5 @@ payuni_hash_iv: ""
 # 信用卡 UNKNOWN 后续通知 和 ATM 缴费完成通知 都走此 URL
 # 格式：完整 URL，仅限 80/443 port
 # 对应环境变量：PAYUNI_NOTIFY_URL
-payuni_notify_url: ""
+payuni_notify_url: "https://iclean.igo-tw.com/api/webhook/payuni"
 
