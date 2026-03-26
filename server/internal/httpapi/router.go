@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"cool-dispatch/internal/config"
@@ -190,35 +189,28 @@ func registerStatic(router *gin.Engine, frontendDist string) {
 	})
 }
 
-// corsMiddleware 为前后端分离开发场景提供最小化跨域支持，并明确放行本地开发域名。
+// corsMiddleware 允许所有来源的跨域请求，确保前后端分离部署和第三方回调场景不受限制。
 func corsMiddleware(cfg config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
-		if origin != "" && isAllowedOrigin(origin, cfg.FrontendOrigin) {
+		if origin != "" {
+			// 允许所有来源：将请求的 Origin 原样返回，兼容携带 Cookie 的跨域请求。
 			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
 			c.Writer.Header().Set("Vary", "Origin")
+		} else {
+			// 没有 Origin 头时（如直接访问），使用通配符。
+			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		}
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Max-Age", "86400")
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
 		c.Next()
 	}
-}
-
-// isAllowedOrigin 只放行显式配置域名和 localhost/127.0.0.1 开发域名，避免把凭据跨域敞开给任意站点。
-func isAllowedOrigin(origin string, frontendOrigin string) bool {
-	if origin == frontendOrigin {
-		return true
-	}
-
-	return strings.HasPrefix(origin, "http://localhost:") ||
-		strings.HasPrefix(origin, "https://localhost:") ||
-		strings.HasPrefix(origin, "http://127.0.0.1:") ||
-		strings.HasPrefix(origin, "https://127.0.0.1:")
 }
 
 // healthResponse 是健康检查接口返回的最小响应结构。

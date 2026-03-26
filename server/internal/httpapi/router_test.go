@@ -136,18 +136,34 @@ func TestNewRouterRejectsOversizedWebhookBody(t *testing.T) {
 	}
 }
 
-// TestIsAllowedOriginRestrictsUnknownHosts 验证仅允许显式配置域名和本地开发来源。
-func TestIsAllowedOriginRestrictsUnknownHosts(t *testing.T) {
+// TestCORSAllowsAllOrigins 验证 CORS 中间件允许任意来源的跨域请求。
+func TestCORSAllowsAllOrigins(t *testing.T) {
 	t.Parallel()
 
-	if !isAllowedOrigin("http://localhost:5173", "https://dispatch.example.com") {
-		t.Fatalf("expected localhost origin allowed")
+	router := NewRouter(config.Config{
+		AppEnv: "development",
+	}, newRouterTestDB(t))
+
+	// 测试任意外部来源均被允许
+	origins := []string{
+		"https://dispatch.example.com",
+		"http://localhost:5173",
+		"https://evil.example.com",
+		"https://another-site.com",
 	}
-	if !isAllowedOrigin("https://dispatch.example.com", "https://dispatch.example.com") {
-		t.Fatalf("expected configured origin allowed")
-	}
-	if isAllowedOrigin("https://evil.example.com", "https://dispatch.example.com") {
-		t.Fatalf("expected unknown origin rejected")
+
+	for _, origin := range origins {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodOptions, "/api/health", nil)
+		request.Header.Set("Origin", origin)
+		router.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusNoContent {
+			t.Fatalf("origin %s: expected 204, got %d", origin, recorder.Code)
+		}
+		if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != origin {
+			t.Fatalf("origin %s: expected allow origin %q, got %q", origin, origin, got)
+		}
 	}
 }
 
