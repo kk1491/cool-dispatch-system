@@ -11,6 +11,7 @@ import (
 	"cool-dispatch/internal/backup"
 	"cool-dispatch/internal/config"
 	"cool-dispatch/internal/database"
+	"cool-dispatch/internal/dockerpg"
 	"cool-dispatch/internal/httpapi"
 	"cool-dispatch/internal/logger"
 	"cool-dispatch/internal/seed"
@@ -30,6 +31,15 @@ func main() {
 		MaxBackups: 2,
 	})
 	defer logger.Sync()
+
+	// 在连接数据库之前，确保 PostgreSQL Docker 容器已运行。
+	// 适用于服务器重启后 Docker 容器尚未自动拉起的场景。
+	// 如果容器已在运行或 Docker 未安装（外部数据库），此步骤会静默跳过。
+	composeFile := filepath.Join(filepath.Dir(resolveServerRoot()), "docker-compose.postgres.yml")
+	pgCfg := dockerpg.DefaultConfig(composeFile)
+	if err := dockerpg.EnsureRunning(pgCfg); err != nil {
+		logger.Warnf("PostgreSQL 容器启动失败: %v（将继续尝试连接数据库）", err)
+	}
 
 	db, err := database.Open(cfg)
 	if err != nil {
@@ -95,16 +105,19 @@ func main() {
 	}
 }
 
+// resolveServerRoot 基于当前源文件位置定位 server/ 根目录。
+// filename = .../server/cmd/api/main.go → .../server
+func resolveServerRoot() string {
+	_, filename, _, ok := runtime.Caller(0)
+	if ok {
+		return filepath.Dir(filepath.Dir(filepath.Dir(filename)))
+	}
+	// 回退：假设从 server/ 目录运行
+	return "."
+}
+
 // resolveSQLSeedDir 基于当前源文件位置定位 SQL 种子目录，
 // 兼容从项目根目录或 cmd/api/ 下直接运行的场景。
 func resolveSQLSeedDir() string {
-	// 尝试从编译时源文件路径推导
-	_, filename, _, ok := runtime.Caller(0)
-	if ok {
-		// filename = .../server/cmd/api/main.go → .../server/database/migrations
-		serverRoot := filepath.Dir(filepath.Dir(filepath.Dir(filename)))
-		return filepath.Join(serverRoot, "database", "migrations")
-	}
-	// 回退：假设从 server/ 目录运行
-	return "database/migrations"
+	return filepath.Join(resolveServerRoot(), "database", "migrations")
 }
