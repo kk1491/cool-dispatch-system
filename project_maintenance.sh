@@ -614,14 +614,38 @@ build_project() {
 
     echo "启动 Go 项目 (${PROJECT_NAME} server)..."
     if [ -f "/www/server/go_project/vhost/scripts/cool_dispatch_server.sh" ]; then
+        # 宝塔面板 Go 项目启动脚本存在，使用宝塔方式启动
         bash /www/server/go_project/vhost/scripts/cool_dispatch_server.sh
-    elif [ -f "${SCRIPT_DIR}/server/api" ]; then
-        cd "${SCRIPT_DIR}/server" || return 1
-        nohup ./api >/dev/null 2>&1 &
-        cd "${SCRIPT_DIR}" || return 1
-        echo -e "${GREEN}✓ Go 项目已后台启动${NC}"
     else
-        echo -e "${YELLOW}⚠ 未找到可执行文件或启动脚本，请手动启动${NC}"
+        # 宝塔启动脚本不存在，先输出醒目提醒
+        echo ""
+        echo -e "${RED}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${RED}║                     ⚠️  重要提醒 ⚠️                         ║${NC}"
+        echo -e "${RED}╠══════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${RED}║  未检测到宝塔面板 Go 项目启动脚本:                          ║${NC}"
+        echo -e "${RED}║  /www/server/go_project/vhost/scripts/                      ║${NC}"
+        echo -e "${RED}║      cool_dispatch_server.sh                                ║${NC}"
+        echo -e "${RED}║                                                              ║${NC}"
+        echo -e "${RED}║  请先在宝塔面板中创建 Go 项目:                              ║${NC}"
+        echo -e "${RED}║  1. 登录宝塔面板                                            ║${NC}"
+        echo -e "${RED}║  2. 进入「Go 项目」管理                                     ║${NC}"
+        echo -e "${RED}║  3. 添加项目，名称设为 cool_dispatch_server                 ║${NC}"
+        echo -e "${RED}║  4. 可执行文件指向: ${SCRIPT_DIR}/server/api${NC}"
+        echo -e "${RED}║  5. 运行目录指向:   ${SCRIPT_DIR}/server${NC}"
+        echo -e "${RED}║  6. 端口设为: 9102                                          ║${NC}"
+        echo -e "${RED}╚══════════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+
+        # 如果已有编译产物，先用 nohup 临时启动，不阻塞自动构建流程
+        if [ -f "${SCRIPT_DIR}/server/api" ]; then
+            log_warning "临时使用 nohup 方式后台启动（建议尽快在宝塔创建项目）"
+            cd "${SCRIPT_DIR}/server" || return 1
+            nohup ./api >/dev/null 2>&1 &
+            cd "${SCRIPT_DIR}" || return 1
+            echo -e "${GREEN}✓ Go 项目已临时后台启动${NC}"
+        else
+            echo -e "${YELLOW}⚠ 未找到可执行文件 ${SCRIPT_DIR}/server/api，请先构建后手动启动${NC}"
+        fi
     fi
 
     echo ""
