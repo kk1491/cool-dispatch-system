@@ -283,13 +283,10 @@ export function fetchTechnicianPageData(): Promise<TechnicianPageData> {
   return requestJSON<TechnicianPageData>('/api/technician-page-data');
 }
 
-export async function fetchReminderPageData(): Promise<ReminderPageData> {
-  const [customers, appointments, settings] = await Promise.all([
-    fetchCustomers(),
-    fetchAppointments(),
-    fetchSettings(),
-  ]);
-  return { customers, appointments, settings };
+// fetchReminderPageData 改走後端聚合接口，讓客戶、工單與提醒設定使用同一份後端快照，
+// 避免回訪頁刷新時三路請求的時序漂移導致統計不同步。
+export function fetchReminderPageData(): Promise<ReminderPageData> {
+  return requestJSON<ReminderPageData>('/api/reminder-page-data');
 }
 
 // fetchLinePageData 由后端一次返回好友和客户映射，避免页面继续混用多个读取源。
@@ -297,12 +294,9 @@ export function fetchLinePageData(): Promise<LinePageData> {
   return requestJSON<LinePageData>('/api/line-page-data');
 }
 
-export async function fetchZonePageData(): Promise<ZonePageData> {
-  const [zones, technicians] = await Promise.all([
-    fetchZones(),
-    fetchTechnicians(),
-  ]);
-  return { zones, technicians };
+// fetchZonePageData 改走後端聚合接口，避免區域與技師列表多路請求產生不同步快照。
+export function fetchZonePageData(): Promise<ZonePageData> {
+  return requestJSON<ZonePageData>('/api/zone-page-data');
 }
 
 // fetchSettingsPageData 首批改走设置页专用 GET，后端统一返回服务项、额外费用和提醒配置。
@@ -315,13 +309,10 @@ export function fetchFinancialReportPageData(): Promise<FinancialReportPageData>
   return requestJSON<FinancialReportPageData>('/api/financial-report-page-data');
 }
 
-export async function fetchReviewDashboardPageData(): Promise<ReviewDashboardPageData> {
-  const [reviews, technicians, appointments] = await Promise.all([
-    fetchReviews(),
-    fetchTechnicians(),
-    fetchAppointments(),
-  ]);
-  return { reviews, technicians, appointments };
+// fetchReviewDashboardPageData 改走後端聚合接口，讓評價、技師與工單使用同一份後端快照，
+// 避免評價看板刷新時三路請求的時序漂移導致統計與歸屬對不上。
+export function fetchReviewDashboardPageData(): Promise<ReviewDashboardPageData> {
+  return requestJSON<ReviewDashboardPageData>('/api/review-dashboard-page-data');
 }
 
 // fetchCashLedgerPageData 改走後端聚合接口，讓技師、工單與現金流水使用同一份後端快照，
