@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { format, parseISO, startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns';
-import { Download, Search, Filter } from 'lucide-react';
+import { Download, Search, Filter, CreditCard } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { cn } from '../lib/utils';
 import {
@@ -17,12 +17,15 @@ import {
   LEGACY_PAYMENT_METHOD_LABEL,
   PAYMENT_COLLECTION_FILTER_OPTIONS,
 } from '../lib/appointmentMetrics';
+import { isPaymentLinkCreatableAppointment } from '../lib/paymentOrder';
 import { Button, Card } from './shared';
 import { Appointment, User } from '../types';
+import PaymentOrderCreateDialog from './PaymentOrderCreateDialog';
 
 interface FinancialReportViewProps {
   appointments: Appointment[];
   technicians: User[];
+  onRefreshData?: () => Promise<unknown>;
 }
 
 type DatePreset = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
@@ -59,7 +62,7 @@ function exportFinancialXLSX(data: Appointment[], technicians: User[]) {
   XLSX.writeFile(wb, `財務報表_${format(new Date(), 'yyyyMMdd')}.xlsx`);
 }
 
-export default function FinancialReportView({ appointments, technicians }: FinancialReportViewProps) {
+export default function FinancialReportView({ appointments, technicians, onRefreshData }: FinancialReportViewProps) {
   const [datePreset, setDatePreset] = useState<DatePreset>('all');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -67,6 +70,7 @@ export default function FinancialReportView({ appointments, technicians }: Finan
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>('all');
   const [collectionFilter, setCollectionFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [paymentDialogAppointmentId, setPaymentDialogAppointmentId] = useState<number | undefined>(undefined);
 
   const now = new Date();
   const thisMonthStart = startOfMonth(now);
@@ -284,12 +288,13 @@ export default function FinancialReportView({ appointments, technicians }: Finan
                 <th className="px-5 py-4 text-right">應收金額</th>
                 <th className="px-5 py-4 text-right">實收金額</th>
                 <th className="px-5 py-4 text-right">未收餘額</th>
+                <th className="px-5 py-4 text-center">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-slate-400">目前尚無符合條件的訂單資料</td>
+                  <td colSpan={9} className="px-6 py-12 text-center text-slate-400">目前尚無符合條件的訂單資料</td>
                 </tr>
               ) : (
                 filtered.map(a => {
@@ -298,6 +303,7 @@ export default function FinancialReportView({ appointments, technicians }: Finan
                   const diff = getOutstandingAmount(a);
                   const collectionLabel = getPaymentCollectionLabel(a);
                   const paymentMethodLabel = getPaymentMethodLabel(a);
+                  const canCreatePaymentLink = isPaymentLinkCreatableAppointment(a);
                   const unitCount = a.items.length;
                   const unitDetail = a.items.map(i => i.type).join('+');
                   const tech = technicians.find(t => t.id === a.technician_id);
@@ -360,6 +366,20 @@ export default function FinancialReportView({ appointments, technicians }: Finan
                           <span className="text-slate-300">-</span>
                         )}
                       </td>
+                      <td className="px-5 py-4 text-center">
+                        {canCreatePaymentLink ? (
+                          <button
+                            type="button"
+                            onClick={() => setPaymentDialogAppointmentId(a.id)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-100"
+                          >
+                            <CreditCard className="h-3.5 w-3.5" />
+                            建立付款連結
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-300">不可建立</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })
@@ -368,6 +388,14 @@ export default function FinancialReportView({ appointments, technicians }: Finan
           </table>
         </div>
       </Card>
+
+      <PaymentOrderCreateDialog
+        open={Boolean(paymentDialogAppointmentId)}
+        onClose={() => setPaymentDialogAppointmentId(undefined)}
+        appointments={appointments}
+        initialAppointmentId={paymentDialogAppointmentId}
+        onCreated={onRefreshData}
+      />
     </div>
   );
 }

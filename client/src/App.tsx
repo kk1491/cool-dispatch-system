@@ -31,6 +31,7 @@ import HeatMap from './components/HeatMap';
 import ReviewPage from './components/ReviewPage';
 import PaymentPage from './components/PaymentPage';
 import PaymentManagement from './components/PaymentManagement';
+import PaymentOrderCreateDialog from './components/PaymentOrderCreateDialog';
 import ReviewDashboard from './components/ReviewDashboard';
 import DashboardView from './components/DashboardView';
 import { getAutoDispatchSuggestions, DispatchScore } from './lib/autoDispatch';
@@ -42,9 +43,11 @@ import {
   getPaymentMethodLabel,
   getOutstandingAmount,
   getWritablePaymentMethod,
+  isCollectibleAppointment,
   isAppointmentFinished,
   isAppointmentRevenueCounted,
 } from './lib/appointmentMetrics';
+import { isPaymentLinkCreatableAppointment } from './lib/paymentOrder';
 import {
   AUTH_REQUIRED_EVENT,
   AuthRequiredError,
@@ -163,6 +166,7 @@ export default function App() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [dispatchSuggestions, setDispatchSuggestions] = useState<DispatchScore[]>([]);
   const [showDispatch, setShowDispatch] = useState(false);
+  const [paymentDialogAppointmentId, setPaymentDialogAppointmentId] = useState<number | undefined>(undefined);
   const [snapshotLoaded, setSnapshotLoaded] = useState(false);
   const [snapshotError, setSnapshotError] = useState('');
   const [viewDataLoading, setViewDataLoading] = useState(false);
@@ -322,7 +326,7 @@ export default function App() {
       return;
     }
 
-    const targetViews: ViewType[] = ['dashboard', 'list', 'create', 'schedule', 'technicians', 'customers', 'line', 'settings', 'financials', 'reminders', 'cashLedger', 'zones', 'heatmap', 'reviews'];
+    const targetViews: ViewType[] = ['dashboard', 'list', 'create', 'schedule', 'technicians', 'customers', 'line', 'settings', 'financials', 'reminders', 'cashLedger', 'zones', 'heatmap', 'reviews', 'payments'];
     if (!targetViews.includes(view)) {
       setViewDataError('');
       setViewDataLoading(false);
@@ -420,6 +424,13 @@ export default function App() {
           setAppointments(data.appointments);
           setTechnicians(data.technicians);
           mergeTechniciansIntoUsers(data.technicians);
+          return;
+        }
+
+        if (view === 'payments') {
+          const data = await refreshAppSnapshot();
+          if (cancelled) return;
+          applyAppSnapshot(data);
           return;
         }
 
@@ -1255,11 +1266,13 @@ export default function App() {
                                 <th className="px-4 py-3">清洗內容</th>
                                 <th className="px-4 py-3">付款方式</th>
                                 <th className="px-4 py-3">狀態</th>
+                                <th className="px-4 py-3">操作</th>
                               </tr>
                             </thead>
                             <tbody>
                               {filteredAppointments.map(appt => {
                                 const isLate = appt.status !== 'completed' && isAfter(new Date(), parseISO(appt.scheduled_at));
+                                const canCreatePaymentLink = isPaymentLinkCreatableAppointment(appt);
                                 return (
                                   <tr 
                                     key={appt.id} 
@@ -1276,6 +1289,25 @@ export default function App() {
                                     <td className="px-4 py-3">{appt.items.length} 台</td>
                                     <td className="px-4 py-3">{getPaymentMethodLabel(appt)}</td>
                                     <td className="px-4 py-3"><Badge status={appt.status} /></td>
+                                    <td className="px-4 py-3">
+                                      {canCreatePaymentLink ? (
+                                        <button
+                                          type="button"
+                                          onClick={event => {
+                                            event.stopPropagation();
+                                            setPaymentDialogAppointmentId(appt.id);
+                                          }}
+                                          className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-100"
+                                        >
+                                          <CreditCard className="w-3.5 h-3.5" />
+                                          建立付款連結
+                                        </button>
+                                      ) : !isCollectibleAppointment(appt) ? (
+                                        <span className="text-xs text-slate-300">無收款</span>
+                                      ) : (
+                                        <span className="text-xs text-slate-300">已收款或無餘額</span>
+                                      )}
+                                    </td>
                                   </tr>
                                 );
                               })}
@@ -1285,6 +1317,14 @@ export default function App() {
                       )}
                     </div>
                   </Card>
+
+                  <PaymentOrderCreateDialog
+                    open={Boolean(paymentDialogAppointmentId)}
+                    onClose={() => setPaymentDialogAppointmentId(undefined)}
+                    appointments={appointments}
+                    initialAppointmentId={paymentDialogAppointmentId}
+                    onCreated={refreshAppSnapshot}
+                  />
                 </motion.div>
               )}
 
@@ -1687,7 +1727,7 @@ export default function App() {
 
               {view === 'financials' && user.role === 'admin' && (
                 <motion.div key="financials" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
-                  <FinancialReportView appointments={appointments} technicians={technicians} />
+                  <FinancialReportView appointments={appointments} technicians={technicians} onRefreshData={refreshAppSnapshot} />
                 </motion.div>
               )}
 
@@ -1736,7 +1776,7 @@ export default function App() {
 
               {view === 'payments' && user.role === 'admin' && (
                 <motion.div key="payments" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
-                  <PaymentManagement />
+                  <PaymentManagement appointments={appointments} onRefreshData={refreshAppSnapshot} />
                 </motion.div>
               )}
 

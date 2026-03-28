@@ -167,16 +167,6 @@ func (h *Handler) CreatePaymentOrder(c *gin.Context) {
 		if err := h.validatePaymentOrderAppointmentWithTx(tx, appointmentID, body.TradeAmt); err != nil {
 			return &paymentOrderActionError{status: http.StatusBadRequest, message: err.Error()}
 		}
-		blockingOrder, err := h.findBlockingPaymentOrderForAppointmentTx(tx, appointmentID)
-		if err != nil {
-			return err
-		}
-		if blockingOrder != nil {
-			return &paymentOrderActionError{
-				status:  http.StatusConflict,
-				message: buildBlockingPaymentOrderMessage(*blockingOrder),
-			}
-		}
 		return tx.Create(&order).Error
 	}); err != nil {
 		var actionErr *paymentOrderActionError
@@ -767,7 +757,7 @@ func (h *Handler) validatePaymentOrderAppointment(appointmentID uint, tradeAmt i
 }
 
 // validatePaymentOrderAppointmentWithTx 在事务内校验预约是否适合创建支付单。
-// 创建阶段会锁住预约行，确保“校验通过”和“写入支付单”之间不会被并发请求插入第二张活跃单。
+// 创建阶段会锁住预约行，确保读取到的预约收款状态与金额校验口径一致。
 func (h *Handler) validatePaymentOrderAppointmentWithTx(tx *gorm.DB, appointmentID uint, tradeAmt int) error {
 	var appointment models.Appointment
 	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&appointment, "id = ?", appointmentID).Error; err != nil {
@@ -787,48 +777,7 @@ func (h *Handler) validatePaymentOrderAppointmentWithTx(tx *gorm.DB, appointment
 	if appointment.TotalAmount != tradeAmt {
 		return fmt.Errorf("支付金額必須與預約應收金額一致")
 	}
-	if !isOneOf(appointment.Status, "completed", "cancelled") {
-		return fmt.Errorf("僅已完成或已取消的預約可綁定支付訂單")
-	}
 	return nil
-}
-
-// findBlockingPaymentOrderForAppointmentTx 查找同预约下仍会阻塞新建单的活跃支付单。
-// 在返回前会先把可由本地规则收敛的过期/超时订单就地转成终态，避免把脏状态也算成活跃单。
-func (h *Handler) findBlockingPaymentOrderForAppointmentTx(tx *gorm.DB, appointmentID uint) (*models.PaymentOrder, error) {
-	var orders []models.PaymentOrder
-	if err := tx.
-		Where("appointment_id = ? AND status IN ?", appointmentID, []string{"pending", "paying", "expired"}).
-		Order("created_at desc").
-		Find(&orders).Error; err != nil {
-		return nil, err
-	}
-
-	now := time.Now()
-	for i := range orders {
-		if err := h.syncPaymentOrderDerivedState(tx, &orders[i], now); err != nil {
-			return nil, err
-		}
-		if isActivePaymentOrderStatus(orders[i].Status) {
-			return &orders[i], nil
-		}
-	}
-	return nil, nil
-}
-
-// buildBlockingPaymentOrderMessage 根据阻塞订单状态返回更准确的冲突提示，便于管理员判断是“待发给客户”还是“客户已在支付”。
-func buildBlockingPaymentOrderMessage(order models.PaymentOrder) string {
-	switch order.Status {
-	case "paying":
-		return "該預約已有處理中的支付單，請勿重複建立"
-	default:
-		return "該預約已有待支付訂單，請勿重複建立"
-	}
-}
-
-// isActivePaymentOrderStatus 表示该状态仍会阻塞同预约继续创建新支付单。
-func isActivePaymentOrderStatus(status string) bool {
-	return status == "pending" || status == "paying"
 }
 
 // findBlockingPayingOrderForAppointmentTx 查找同预约下已进入 paying 的其他支付单。
@@ -1052,6 +1001,12 @@ func isPaymentOrderAwaitingConfirmation(order models.PaymentOrder) bool {
 	}
 	message := strings.TrimSpace(order.ResCodeMsg)
 	return message == paymentOrderCreditPendingMessage || message == paymentOrderATMPendingMessage
+}
+
+// isActivePaymentOrderStatus 统一识别仍可继续被客户访问或影响预约状态同步的支付单状态。
+// 建单阶段已不再用它阻挡重复创建，但状态同步与公开支付页仍需要这层判断。
+func isActivePaymentOrderStatus(status string) bool {
+	return status == "pending" || status == "paying"
 }
 
 // syncPaymentOrderAppointmentState 确保支付单与预约主表的“已收款”状态不会背离。
