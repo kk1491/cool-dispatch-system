@@ -741,17 +741,29 @@ export default function App() {
   };
 
   const syncExtraFeeProducts = async (next: ExtraItem[]) => {
+    // 設定頁輸入框屬於受控元件；先即時回寫本地狀態，避免每次鍵入都卡在 API 往返上，
+    // 導致新增項目看起來「無法輸入」或輸入中的文字被舊值覆蓋。
+    setExtraFeeProducts(next);
     try {
       const saved = await replaceExtraItems(next);
       setExtraFeeProducts(saved);
-      await refreshAppSnapshot();
     } catch (err) {
       console.error(err);
+      await refreshAppSnapshot();
       toast.error('同步額外費用失敗');
     }
   };
 
   const syncServiceItems = async (next: ServiceItem[]) => {
+    // 服務項目設定同樣採用受控輸入；必須先更新前端狀態，才能讓管理員在新增項目後立即打字。
+    setServiceItems(next);
+    // 新增預約表單若還沒有任何服務項目，沿用設定頁最新草稿作為預設值，避免畫面仍停留在舊項目。
+    setNewApptItems(prev => prev.length > 0 ? prev : (next.length > 0 ? [{
+      id: '1',
+      type: next[0].name,
+      note: '',
+      price: next[0].default_price,
+    }] : []));
     try {
       const saved = await replaceServiceItems(next);
       setServiceItems(saved);
@@ -761,9 +773,9 @@ export default function App() {
         note: '',
         price: saved[0].default_price,
       }] : []));
-      await refreshAppSnapshot();
     } catch (err) {
       console.error(err);
+      await refreshAppSnapshot();
       toast.error('同步服務項目失敗');
     }
   };
