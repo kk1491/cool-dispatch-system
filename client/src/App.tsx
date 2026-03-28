@@ -3,7 +3,7 @@ import {
   ClipboardList, User as UserIcon, Plus, ChevronRight, LogOut, Package, 
   DollarSign, Users, MessageSquare, MapPin, Phone, Calendar,
   CheckCircle2, X, Search, Clock, CalendarDays, Map, Star, LayoutDashboard,
-  AlertTriangle, Download, Send, Link2, Copy, Check, CreditCard, Trash2
+  AlertTriangle, Download, Send, Link2, Copy, Check, CreditCard, Trash2, Menu
 } from 'lucide-react';
 import { Switch, Route } from 'wouter';
 import { motion, AnimatePresence } from 'motion/react';
@@ -105,6 +105,43 @@ type ViewType = 'dashboard' | 'list' | 'create' | 'technicians' | 'customers' | 
 const EMPTY_APPOINTMENT_ITEMS: ACUnit[] = [];
 // ADMIN_RECYCLE_BIN_PATH 是管理员回收站的隐藏入口，仅允许通过此固定 URL 直接访问前端管理界面。
 const ADMIN_RECYCLE_BIN_PATH = '/admin/recycle-bin';
+// ADMIN_MOBILE_PRIMARY_NAV 固定管理员移动端底部 5 项主导航，覆盖最高频入口。
+const ADMIN_MOBILE_PRIMARY_NAV = [
+  { key: 'dashboard' as ViewType, icon: LayoutDashboard, label: '首頁總覽' },
+  { key: 'list' as ViewType, icon: ClipboardList, label: '任務清單' },
+  { key: 'create' as ViewType, icon: Plus, label: '新增預約' },
+  { key: 'schedule' as ViewType, icon: CalendarDays, label: '排程表' },
+  { key: 'customers' as ViewType, icon: Users, label: '顧客管理' },
+];
+// ADMIN_DESKTOP_NAV 保留桌面端完整管理员导航，不改变既有信息架构。
+const ADMIN_DESKTOP_NAV = [
+  { key: 'dashboard' as ViewType, icon: LayoutDashboard, label: '首頁總覽' },
+  { key: 'list' as ViewType, icon: ClipboardList, label: '任務清單' },
+  { key: 'create' as ViewType, icon: Plus, label: '新增預約' },
+  { key: 'schedule' as ViewType, icon: CalendarDays, label: '排程表' },
+  { key: 'technicians' as ViewType, icon: UserIcon, label: '師傅管理' },
+  { key: 'customers' as ViewType, icon: Users, label: '顧客管理' },
+  { key: 'line' as ViewType, icon: MessageSquare, label: 'LINE 紀錄' },
+  { key: 'zones' as ViewType, icon: MapPin, label: '區域管理' },
+  { key: 'reminders' as ViewType, icon: Clock, label: '回訪提醒' },
+  { key: 'settings' as ViewType, icon: Package, label: '系統設定' },
+  { key: 'financials' as ViewType, icon: DollarSign, label: '財務報表' },
+  { key: 'heatmap' as ViewType, icon: Map, label: '熱區地圖' },
+  { key: 'reviews' as ViewType, icon: Star, label: '客戶評價' },
+  { key: 'payments' as ViewType, icon: CreditCard, label: '支付管理' },
+];
+// ADMIN_MOBILE_DRAWER_NAV 是管理员移动端抽屉菜单，承接底部 5 项之外的全部后台入口。
+const ADMIN_MOBILE_DRAWER_NAV = [
+  { key: 'technicians' as ViewType, icon: UserIcon, label: '師傅管理' },
+  { key: 'line' as ViewType, icon: MessageSquare, label: 'LINE 紀錄' },
+  { key: 'zones' as ViewType, icon: MapPin, label: '區域管理' },
+  { key: 'reminders' as ViewType, icon: Clock, label: '回訪提醒' },
+  { key: 'settings' as ViewType, icon: Package, label: '系統設定' },
+  { key: 'financials' as ViewType, icon: DollarSign, label: '財務報表' },
+  { key: 'heatmap' as ViewType, icon: Map, label: '熱區地圖' },
+  { key: 'reviews' as ViewType, icon: Star, label: '客戶評價' },
+  { key: 'payments' as ViewType, icon: CreditCard, label: '支付管理' },
+];
 
 type CreateFormDraft = {
   customer_name?: string;
@@ -187,6 +224,8 @@ export default function App() {
   const [viewDataError, setViewDataError] = useState('');
   // showLogoutConfirm 控制自定义登出确认弹窗的显示状态，替代原生 window.confirm。
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  // isMobileMenuOpen 控制管理员移动端左侧抽屉菜单开合。
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const currentMonthKey = format(new Date(), 'yyyy-MM');
   // currentMonthFinishedAppointments 统一提供“本月已结案”集合，避免列表页摘要卡片继续拿全量数据冒充月度指标。
   const currentMonthFinishedAppointments = appointments.filter(
@@ -304,6 +343,19 @@ export default function App() {
       window.removeEventListener('popstate', syncRecycleBinDirectPath);
     };
   }, [user?.role]);
+
+  useEffect(() => {
+    // 管理员移动端抽屉打开时锁定 body 滚动，避免抽屉与页面同时滚动。
+    if (!isMobileMenuOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobileMenuOpen]);
 
   // refreshAppSnapshot 在初始化、进入快照型页面和写操作后统一回读真实资源级数据。
   const refreshAppSnapshot = async () => {
@@ -1002,6 +1054,15 @@ export default function App() {
   }
   // canAccessRecycleBin 收敛管理员进入回收站的唯一前端条件：管理员身份 + 指定隐藏 URL。
   const canAccessRecycleBin = user.role === 'admin' && isRecycleBinDirectPath;
+  // mobileDrawerNavItems 在保持默认隐藏回收站规则的前提下，动态补齐抽屉入口。
+  const mobileDrawerNavItems = canAccessRecycleBin
+    ? [...ADMIN_MOBILE_DRAWER_NAV, { key: 'recycleBin' as ViewType, icon: Trash2, label: '回收站' }]
+    : ADMIN_MOBILE_DRAWER_NAV;
+  // handleAdminViewChange 统一管理管理员端视图切换与移动抽屉关闭，避免各按钮重复写状态逻辑。
+  const handleAdminViewChange = (nextView: ViewType) => {
+    setView(nextView);
+    setIsMobileMenuOpen(false);
+  };
 
   const headerTitle: Record<ViewType, string> = {
     dashboard: '首頁總覽',
@@ -1018,7 +1079,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 md:pb-0 md:pl-56">
+    <div className="min-h-screen bg-slate-50 pb-24 pt-20 md:pb-0 md:pt-0 md:pl-56">
       <Toaster position="top-center" />
 
       {/* 自定义登出确认弹窗，替代原生 window.confirm */}
@@ -1082,7 +1143,104 @@ export default function App() {
         />
       ) : (
         <>
-          <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-2 flex justify-around items-center z-50 md:top-0 md:bottom-0 md:left-0 md:w-56 md:flex-col md:justify-start md:py-5 md:px-3 md:border-r md:border-t-0 md:shadow-sm">
+          <AnimatePresence>
+            {isMobileMenuOpen && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-sm md:hidden"
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                <motion.div
+                  initial={{ x: -280 }}
+                  animate={{ x: 0 }}
+                  exit={{ x: -280 }}
+                  transition={{ type: 'spring', damping: 28, stiffness: 260 }}
+                  className="flex h-full w-[280px] flex-col bg-white shadow-2xl"
+                  onClick={event => event.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600">
+                        <Package className="h-4.5 w-4.5 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">CoolDispatch</p>
+                        <p className="text-xs text-slate-400">管理員選單</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                      data-testid="button-mobile-menu-close"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  <div className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+                    {mobileDrawerNavItems.map(item => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => handleAdminViewChange(item.key)}
+                        data-testid={`drawer-nav-${item.key}`}
+                        className={cn(
+                          'flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm transition-all',
+                          view === item.key
+                            ? 'bg-blue-50 font-medium text-blue-600'
+                            : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700',
+                        )}
+                      >
+                        <item.icon className="h-5 w-5" />
+                        <span>{item.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="border-t border-slate-100 p-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        setShowLogoutConfirm(true);
+                      }}
+                      data-testid="button-mobile-menu-logout"
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-red-500 transition-all hover:bg-red-50"
+                    >
+                      <LogOut className="h-5 w-5" />
+                      <span>登出</span>
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white px-2 py-2 shadow-[0_-8px_30px_rgba(15,23,42,0.06)] md:hidden">
+            <div className="flex items-stretch justify-between gap-1">
+              {ADMIN_MOBILE_PRIMARY_NAV.map(item => (
+                <button
+                  key={item.key}
+                  onClick={() => handleAdminViewChange(item.key)}
+                  data-testid={`nav-${item.key}`}
+                  className={cn(
+                    'flex min-w-0 flex-1 flex-col items-center gap-1 rounded-xl px-1 py-2 text-center transition-all',
+                    view === item.key
+                      ? 'bg-blue-50 font-medium text-blue-600'
+                      : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700',
+                  )}
+                >
+                  <item.icon className="h-5 w-5" />
+                  <span className="truncate text-[10px] leading-3">{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </nav>
+
+          <nav className="fixed bottom-0 left-0 right-0 hidden bg-white border-t border-slate-200 px-4 py-2 justify-around items-center z-50 md:top-0 md:bottom-0 md:left-0 md:w-56 md:flex-col md:justify-start md:py-5 md:px-3 md:border-r md:border-t-0 md:shadow-sm">
             <div className="hidden md:flex items-center gap-2.5 mb-8 px-3">
               <div className="w-8 h-8 bg-blue-600 rounded-md flex items-center justify-center">
                 <Package className="text-white w-4.5 h-4.5" />
@@ -1091,25 +1249,10 @@ export default function App() {
             </div>
 
             <div className="flex md:flex-col gap-0.5 w-full">
-              {([
-                { key: 'dashboard' as ViewType, icon: LayoutDashboard, label: '首頁總覽' },
-                { key: 'list' as ViewType, icon: ClipboardList, label: '任務清單' },
-                { key: 'create' as ViewType, icon: Plus, label: '新增預約' },
-                { key: 'schedule' as ViewType, icon: CalendarDays, label: '排程表' },
-                { key: 'technicians' as ViewType, icon: UserIcon, label: '師傅管理' },
-                { key: 'customers' as ViewType, icon: Users, label: '顧客管理' },
-                { key: 'line' as ViewType, icon: MessageSquare, label: 'LINE 紀錄' },
-                { key: 'zones' as ViewType, icon: MapPin, label: '區域管理' },
-                { key: 'reminders' as ViewType, icon: Clock, label: '回訪提醒' },
-                { key: 'settings' as ViewType, icon: Package, label: '系統設定' },
-                { key: 'financials' as ViewType, icon: DollarSign, label: '財務報表' },
-                { key: 'heatmap' as ViewType, icon: Map, label: '熱區地圖' },
-                { key: 'reviews' as ViewType, icon: Star, label: '客戶評價' },
-                { key: 'payments' as ViewType, icon: CreditCard, label: '支付管理' },
-              ]).map(item => (
+              {ADMIN_DESKTOP_NAV.map(item => (
                 <button
                   key={item.key}
-                  onClick={() => setView(item.key)}
+                  onClick={() => handleAdminViewChange(item.key)}
                   data-testid={`nav-${item.key}`}
                   className={cn(
                     "flex flex-col md:flex-row items-center gap-1 md:gap-2.5 px-3 py-2 rounded transition-all w-full text-left text-sm",
@@ -1134,17 +1277,27 @@ export default function App() {
             </div>
           </nav>
 
-          <header className="bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between md:px-10 md:py-6">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900" data-testid="text-header-title">{headerTitle[view]}</h2>
-              <p className="text-sm text-slate-500">歡迎回來, {user.name} ({user.role === 'admin' ? '管理員' : '師傅'})</p>
+          <header className="fixed inset-x-0 top-0 z-40 flex items-center justify-between border-b border-slate-100 bg-white px-4 py-3 md:static md:px-10 md:py-6">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(true)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 md:hidden"
+                data-testid="button-mobile-menu-open"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 md:text-xl" data-testid="text-header-title">{headerTitle[view]}</h2>
+                <p className="hidden text-sm text-slate-500 md:block">歡迎回來, {user.name} ({user.role === 'admin' ? '管理員' : '師傅'})</p>
+              </div>
             </div>
-            <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100">
               <UserIcon className="w-5 h-5 text-slate-600" />
             </div>
           </header>
 
-          <main className="p-6 md:p-10 max-w-6xl mx-auto">
+          <main className="mx-auto max-w-6xl p-4 pb-28 md:p-10 md:pb-10">
             {viewDataLoading && (
               <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
                 正在同步當前頁面的後端資料...
