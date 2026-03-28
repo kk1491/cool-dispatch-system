@@ -3,7 +3,7 @@ import {
   ClipboardList, User as UserIcon, Plus, ChevronRight, LogOut, Package, 
   DollarSign, Users, MessageSquare, MapPin, Phone, Calendar,
   CheckCircle2, X, Search, Clock, CalendarDays, Map, Star, LayoutDashboard,
-  AlertTriangle, Download, Send, Link2, Copy, Check, CreditCard
+  AlertTriangle, Download, Send, Link2, Copy, Check, CreditCard, Trash2
 } from 'lucide-react';
 import { Switch, Route } from 'wouter';
 import { motion, AnimatePresence } from 'motion/react';
@@ -32,6 +32,7 @@ import ReviewPage from './components/ReviewPage';
 import PaymentPage from './components/PaymentPage';
 import PaymentManagement from './components/PaymentManagement';
 import PaymentOrderCreateDialog from './components/PaymentOrderCreateDialog';
+import RecycleBinView from './components/RecycleBinView';
 import ReviewDashboard from './components/ReviewDashboard';
 import DashboardView from './components/DashboardView';
 import { getAutoDispatchSuggestions, DispatchScore } from './lib/autoDispatch';
@@ -96,7 +97,7 @@ import {
   WebhookSettingsPayload,
 } from './lib/api';
 
-type ViewType = 'dashboard' | 'list' | 'create' | 'technicians' | 'customers' | 'line' | 'settings' | 'financials' | 'reminders' | 'cashLedger' | 'schedule' | 'zones' | 'heatmap' | 'reviews' | 'payments';
+type ViewType = 'dashboard' | 'list' | 'create' | 'technicians' | 'customers' | 'line' | 'settings' | 'financials' | 'reminders' | 'cashLedger' | 'schedule' | 'zones' | 'heatmap' | 'reviews' | 'payments' | 'recycleBin';
 
 const EMPTY_APPOINTMENT_ITEMS: ACUnit[] = [];
 
@@ -965,7 +966,8 @@ export default function App() {
     zones: '區域管理',
     heatmap: '熱區地圖',
     reviews: '客戶評價',
-    payments: '支付管理'
+    payments: '支付管理',
+    recycleBin: '回收站',
   };
 
   return (
@@ -1053,6 +1055,7 @@ export default function App() {
                 { key: 'zones' as ViewType, icon: MapPin, label: '區域管理' },
                 { key: 'reminders' as ViewType, icon: Clock, label: '回訪提醒' },
                 { key: 'settings' as ViewType, icon: Package, label: '系統設定' },
+                { key: 'recycleBin' as ViewType, icon: Trash2, label: '回收站' },
                 { key: 'financials' as ViewType, icon: DollarSign, label: '財務報表' },
                 { key: 'heatmap' as ViewType, icon: Map, label: '熱區地圖' },
                 { key: 'reviews' as ViewType, icon: Star, label: '客戶評價' },
@@ -1777,6 +1780,12 @@ export default function App() {
               {view === 'payments' && user.role === 'admin' && (
                 <motion.div key="payments" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
                   <PaymentManagement appointments={appointments} onRefreshData={refreshAppSnapshot} />
+                </motion.div>
+              )}
+
+              {view === 'recycleBin' && user.role === 'admin' && (
+                <motion.div key="recycleBin" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
+                  <RecycleBinView onRestored={refreshAppSnapshot} />
                 </motion.div>
               )}
 

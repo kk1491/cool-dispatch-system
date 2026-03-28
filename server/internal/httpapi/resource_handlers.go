@@ -14,8 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"cool-dispatch/internal/cloudflare"
-	"cool-dispatch/internal/logger"
 	"cool-dispatch/internal/models"
 	"cool-dispatch/internal/security"
 
@@ -1134,7 +1132,8 @@ func normalizeLegacyOutstandingPaymentFields(existing *models.Appointment, incom
 	incoming.PaymentTime = nil
 }
 
-// DeleteAppointment 删除指定预约记录，并异步清理关联的 Cloudflare 图床照片。
+// DeleteAppointment 将指定预约放入回收站。
+// 软删除后的预约与关联照片默认长期保留，直到后续有明确的人工清理策略。
 func (h *Handler) DeleteAppointment(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -1142,10 +1141,9 @@ func (h *Handler) DeleteAppointment(c *gin.Context) {
 		return
 	}
 
-	// 删除前先查出预约记录，提取照片列表用于后续图床清理。
 	var appointment models.Appointment
 	if err := h.db.First(&appointment, "id = ?", id).Error; err != nil {
-		// 记录不存在也视为删除成功（幂等），但无需清理图床。
+		// 记录不存在也视为删除成功（幂等）。
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondData(c, http.StatusOK, "success", gin.H{"deleted": true})
 			return
@@ -1154,31 +1152,9 @@ func (h *Handler) DeleteAppointment(c *gin.Context) {
 		return
 	}
 
-	// 提取照片 URL 列表，用于删除数据库记录后异步清理图床。
-	var photoURLs []string
-	if len(appointment.Photos) > 0 {
-		_ = json.Unmarshal(appointment.Photos, &photoURLs)
-	}
-
 	if err := h.db.Delete(&models.Appointment{}, "id = ?", id).Error; err != nil {
 		respondMessage(c, http.StatusInternalServerError, "failed to delete appointment")
 		return
-	}
-
-	// 异步清理 Cloudflare 图床照片，不阻塞删除响应。
-	// 清理失败仅打日志，不影响删除结果（图床会有孤儿图片，可定期人工清理）。
-	if h.cfClient.IsConfigured() && len(photoURLs) > 0 {
-		go func(urls []string) {
-			for _, u := range urls {
-				imageID := cloudflare.ExtractImageIDFromURL(u)
-				if imageID == "" {
-					continue // 非 Cloudflare 图片（如旧 Base64 数据），跳过
-				}
-				if err := h.cfClient.DeleteImage(imageID); err != nil {
-					logger.Errorf("[cloudflare] async delete image %s failed: %v", imageID, err)
-				}
-			}
-		}(photoURLs)
 	}
 
 	respondData(c, http.StatusOK, "success", gin.H{"deleted": true})
@@ -1251,11 +1227,9 @@ func (h *Handler) ReplaceTechnicians(c *gin.Context) {
 			return err
 		}
 		for _, entry := range entries {
-			// 先检查该师傅是否已存在。
 			var existing models.User
-			err := tx.First(&existing, "id = ? AND role = ?", entry.model.ID, "technician").Error
+			err := tx.Unscoped().First(&existing, "id = ? AND role = ?", entry.model.ID, "technician").Error
 			if err == nil {
-				// 已存在：更新非密码字段。
 				updates := map[string]any{
 					"name":         entry.model.Name,
 					"phone":        entry.model.Phone,
@@ -1263,16 +1237,15 @@ func (h *Handler) ReplaceTechnicians(c *gin.Context) {
 					"skills":       entry.model.Skills,
 					"zone_id":      entry.model.ZoneID,
 					"availability": entry.model.Availability,
+					"deleted_at":   nil,
 				}
-				// 仅在请求中显式提供了密码时才覆盖，否则保留原密码哈希。
 				if entry.passwordHash != "" {
 					updates["password_hash"] = entry.passwordHash
 				}
-				if err := tx.Model(&existing).Updates(updates).Error; err != nil {
+				if err := tx.Unscoped().Model(&existing).Updates(updates).Error; err != nil {
 					return err
 				}
 			} else if errors.Is(err, gorm.ErrRecordNotFound) {
-				// 新增师傅：设置密码哈希（若有）。
 				newUser := entry.model
 				if entry.passwordHash != "" {
 					newUser.PasswordHash = entry.passwordHash
@@ -2545,7 +2518,6 @@ func (h *Handler) applyAppointmentDerivedFields(appointment *models.Appointment)
 		appointment.CompletedTime = &now
 	}
 
-
 	if appointment.TechnicianID != nil && appointment.Status == "pending" {
 		appointment.Status = "assigned"
 	}
@@ -2821,7 +2793,7 @@ func clearCustomerLineFields(tx *gorm.DB, query *gorm.DB) error {
 	}).Error
 }
 
-// replaceZones 批量覆盖区域数据并删除未出现在本次写入中的旧区域。
+// replaceZones 批量覆盖区域数据并把缺失项移入回收站。
 func replaceZones(db *gorm.DB, items []models.ServiceZone, ids []string) error {
 	if len(ids) == 0 {
 		return errors.New("replace payload must not be empty")
@@ -2835,7 +2807,7 @@ func replaceZones(db *gorm.DB, items []models.ServiceZone, ids []string) error {
 			return err
 		}
 		for _, item := range items {
-			if err := tx.Clauses(clause.OnConflict{
+			if err := tx.Unscoped().Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "id"}},
 				UpdateAll: true,
 			}).Create(&item).Error; err != nil {
@@ -2846,7 +2818,7 @@ func replaceZones(db *gorm.DB, items []models.ServiceZone, ids []string) error {
 	})
 }
 
-// replaceServiceItems 批量覆盖服务项目数据并删除未出现在本次写入中的旧项目。
+// replaceServiceItems 批量覆盖服务项目数据并把缺失项移入回收站。
 func replaceServiceItems(db *gorm.DB, items []models.ServiceItem, ids []string) error {
 	if len(ids) == 0 {
 		return errors.New("replace payload must not be empty")
@@ -2860,7 +2832,7 @@ func replaceServiceItems(db *gorm.DB, items []models.ServiceItem, ids []string) 
 			return err
 		}
 		for _, item := range items {
-			if err := tx.Clauses(clause.OnConflict{
+			if err := tx.Unscoped().Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "id"}},
 				UpdateAll: true,
 			}).Create(&item).Error; err != nil {
@@ -2871,7 +2843,7 @@ func replaceServiceItems(db *gorm.DB, items []models.ServiceItem, ids []string) 
 	})
 }
 
-// replaceExtraItems 批量覆盖额外收费项数据并删除未出现在本次写入中的旧项目。
+// replaceExtraItems 批量覆盖额外收费项数据并把缺失项移入回收站。
 func replaceExtraItems(db *gorm.DB, items []models.ExtraItem, ids []string) error {
 	if len(ids) == 0 {
 		return errors.New("replace payload must not be empty")
@@ -2885,7 +2857,7 @@ func replaceExtraItems(db *gorm.DB, items []models.ExtraItem, ids []string) erro
 			return err
 		}
 		for _, item := range items {
-			if err := tx.Clauses(clause.OnConflict{
+			if err := tx.Unscoped().Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "id"}},
 				UpdateAll: true,
 			}).Create(&item).Error; err != nil {
@@ -2896,14 +2868,14 @@ func replaceExtraItems(db *gorm.DB, items []models.ExtraItem, ids []string) erro
 	})
 }
 
-// replaceCustomers 批量 upsert 客户记录，删除不在 ids 列表中的旧数据，与其它 replace 函数保持一致。
+// replaceCustomers 批量 upsert 客户记录，并将缺失项移入回收站。
 func replaceCustomers(db *gorm.DB, items []models.Customer, ids []string) error {
 	if len(ids) == 0 {
 		return errors.New("replace payload must not be empty")
 	}
 	return db.Transaction(func(tx *gorm.DB) error {
 		var existingCustomers []models.Customer
-		if err := tx.Find(&existingCustomers).Error; err != nil {
+		if err := tx.Unscoped().Find(&existingCustomers).Error; err != nil {
 			return err
 		}
 		existingByID := make(map[string]models.Customer, len(existingCustomers))
@@ -2917,6 +2889,9 @@ func replaceCustomers(db *gorm.DB, items []models.Customer, ids []string) error 
 
 		var removedCustomerIDs []string
 		for _, item := range existingCustomers {
+			if item.DeletedAt.Valid {
+				continue
+			}
 			if _, ok := incomingIDs[item.ID]; !ok {
 				removedCustomerIDs = append(removedCustomerIDs, item.ID)
 			}
@@ -2948,6 +2923,7 @@ func replaceCustomers(db *gorm.DB, items []models.Customer, ids []string) error 
 					}
 				}
 			}
+			item.DeletedAt = gorm.DeletedAt{}
 			if item.LineUID != nil {
 				if err := clearCustomerLineFieldsByLineUID(tx, *item.LineUID, stringPtr(item.ID)); err != nil {
 					return err
@@ -2964,7 +2940,7 @@ func replaceCustomers(db *gorm.DB, items []models.Customer, ids []string) error 
 					return err
 				}
 			}
-			if err := tx.Clauses(clause.OnConflict{
+			if err := tx.Unscoped().Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "id"}},
 				UpdateAll: true,
 			}).Create(&item).Error; err != nil {

@@ -106,6 +106,42 @@ export interface CashLedgerPageData {
   cash_ledger_entries: CashLedgerEntry[];
 }
 
+export type RecycleBinEntityType =
+  | 'appointments'
+  | 'customers'
+  | 'technicians'
+  | 'zones'
+  | 'service-items'
+  | 'extra-items';
+
+// DeletedResourceItem 是後端回收站列表的統一讀模型。
+// 前端直接按這份聚合結構渲染，避免再為不同實體重複拼裝展示欄位。
+export interface DeletedResourceItem {
+  id: string;
+  primary_text: string;
+  secondary_text?: string;
+  deleted_at: string;
+}
+
+export interface RecycleBinPageData {
+  appointments: DeletedResourceItem[];
+  customers: DeletedResourceItem[];
+  technicians: DeletedResourceItem[];
+  zones: DeletedResourceItem[];
+  'service-items': DeletedResourceItem[];
+  'extra-items': DeletedResourceItem[];
+}
+
+export interface RestoreRecycleBinItemsPayload {
+  resource: RecycleBinEntityType;
+  ids: string[];
+}
+
+export interface RestoreRecycleBinItemsResult {
+  resource: RecycleBinEntityType;
+  restored_count: number;
+}
+
 export const AUTH_REQUIRED_EVENT = 'app:auth-required';
 
 export class AuthRequiredError extends Error {
@@ -222,6 +258,35 @@ export function fetchNotificationLogs(): Promise<NotificationLog[]> {
 
 export function fetchSettings(): Promise<SettingsPayload> {
   return requestJSON<SettingsPayload>('/api/settings');
+}
+
+// fetchRecycleBinPageData 读取管理员回收站数据，统一返回各类已软删除记录。
+export function fetchRecycleBinPageData(): Promise<RecycleBinPageData> {
+  return requestJSON<{
+    appointments: DeletedResourceItem[];
+    customers: DeletedResourceItem[];
+    technicians: DeletedResourceItem[];
+    zones: DeletedResourceItem[];
+    service_items: DeletedResourceItem[];
+    extra_items: DeletedResourceItem[];
+  }>('/api/deleted-resources').then(data => ({
+    appointments: data.appointments || [],
+    customers: data.customers || [],
+    technicians: data.technicians || [],
+    zones: data.zones || [],
+    'service-items': data.service_items || [],
+    'extra-items': data.extra_items || [],
+  }));
+}
+
+// restoreRecycleBinItems 按实体类型批量恢复软删除记录。
+export function restoreRecycleBinItems(
+  payload: RestoreRecycleBinItemsPayload,
+): Promise<RestoreRecycleBinItemsResult> {
+  return requestJSON<RestoreRecycleBinItemsResult>('/api/deleted-resources/restore', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function fetchAppSnapshot(): Promise<AppDataSnapshot> {

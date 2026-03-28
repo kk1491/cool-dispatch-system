@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"gorm.io/datatypes"
+	"gorm.io/gorm"
 )
 
 // User 表示系统登录账号，同时承载管理员和技师基础资料。
@@ -15,7 +16,7 @@ type User struct {
 	// Role 标识账号角色，当前仅允许 admin 或 technician。
 	Role string `json:"role" gorm:"not null;index;comment:用户角色"`
 	// Phone 作为登录唯一键和运维 CLI 查找键使用。
-	Phone string `json:"phone" gorm:"not null;uniqueIndex;comment:用户手机号"`
+	Phone string `json:"phone" gorm:"not null;index;comment:用户手机号"`
 	// PasswordHash 仅在服务端参与认证，绝不回传给前端。
 	PasswordHash string `json:"-" gorm:"column:password_hash;not null;comment:密码哈希"`
 	// Color 是技师在前端排班和工单列表中的展示色。
@@ -30,6 +31,8 @@ type User struct {
 	CreatedAt time.Time `json:"created_at" gorm:"comment:创建时间"`
 	// UpdatedAt 是账号最近一次资料更新时间。
 	UpdatedAt time.Time `json:"updated_at" gorm:"comment:更新时间"`
+	// DeletedAt 用于软删除账号，便于管理端恢复误删的技师资料。
+	DeletedAt gorm.DeletedAt `json:"deleted_at,omitempty" gorm:"index;comment:软删除时间"`
 }
 
 // Customer 表示客户主档，统一聚合电话、地址与 LINE 绑定信息。
@@ -49,7 +52,7 @@ type Customer struct {
 	// LinePicture 是当前已同步的 LINE 头像地址。
 	LinePicture *string `json:"line_picture,omitempty" gorm:"comment:LINE头像地址"`
 	// LineUID 是 LINE 官方用户 UID，用于 webhook 关联客户。
-	LineUID *string `json:"line_uid,omitempty" gorm:"uniqueIndex;comment:LINE用户UID"`
+	LineUID *string `json:"line_uid,omitempty" gorm:"index;comment:LINE用户UID"`
 	// LineJoinedAt 是客户关注 LINE 官方账号的时间。
 	LineJoinedAt *time.Time `json:"line_joined_at,omitempty" gorm:"comment:LINE关注时间"`
 	// LineData 存储额外的 LINE 资料快照，供后续扩展使用。
@@ -58,6 +61,8 @@ type Customer struct {
 	CreatedAt time.Time `json:"created_at" gorm:"comment:创建时间"`
 	// UpdatedAt 是客户主档最近更新时间。
 	UpdatedAt time.Time `json:"updated_at" gorm:"comment:更新时间"`
+	// DeletedAt 用于软删除客户主档，便于误删后恢复。
+	DeletedAt gorm.DeletedAt `json:"deleted_at,omitempty" gorm:"index;comment:软删除时间"`
 }
 
 // Appointment 表示一次上门服务预约及其排程、支付和作业状态。
@@ -124,6 +129,8 @@ type Appointment struct {
 	CreatedAt time.Time `json:"created_at" gorm:"comment:创建时间"`
 	// UpdatedAt 是预约最近更新时间。
 	UpdatedAt time.Time `json:"updated_at" gorm:"comment:更新时间"`
+	// DeletedAt 用于软删除预约，支持回收站恢复与延迟物理清理。
+	DeletedAt gorm.DeletedAt `json:"deleted_at,omitempty" gorm:"index;comment:软删除时间"`
 }
 
 // ServiceZone 表示一块可派工服务区域及其覆盖行政区。
@@ -140,6 +147,8 @@ type ServiceZone struct {
 	CreatedAt time.Time `json:"created_at" gorm:"comment:创建时间"`
 	// UpdatedAt 是服务区域最近更新时间。
 	UpdatedAt time.Time `json:"updated_at" gorm:"comment:更新时间"`
+	// DeletedAt 用于软删除服务区域，避免误删后无法恢复。
+	DeletedAt gorm.DeletedAt `json:"deleted_at,omitempty" gorm:"index;comment:软删除时间"`
 }
 
 // ServiceItem 表示标准服务项目及其默认报价。
@@ -156,6 +165,8 @@ type ServiceItem struct {
 	CreatedAt time.Time `json:"created_at" gorm:"comment:创建时间"`
 	// UpdatedAt 是服务项目最近更新时间。
 	UpdatedAt time.Time `json:"updated_at" gorm:"comment:更新时间"`
+	// DeletedAt 用于软删除服务项目，便于设置页恢复误删项目。
+	DeletedAt gorm.DeletedAt `json:"deleted_at,omitempty" gorm:"index;comment:软删除时间"`
 }
 
 // ExtraItem 表示可附加到预约中的额外收费项目。
@@ -170,6 +181,8 @@ type ExtraItem struct {
 	CreatedAt time.Time `json:"created_at" gorm:"comment:创建时间"`
 	// UpdatedAt 是额外收费项目最近更新时间。
 	UpdatedAt time.Time `json:"updated_at" gorm:"comment:更新时间"`
+	// DeletedAt 用于软删除额外收费项目，避免误删后立即丢失。
+	DeletedAt gorm.DeletedAt `json:"deleted_at,omitempty" gorm:"index;comment:软删除时间"`
 }
 
 // CashLedgerEntry 表示技师现金收支流水，用于现金账页面和风控核对。

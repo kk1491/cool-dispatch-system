@@ -34,7 +34,10 @@ func Open(cfg config.Config) (*gorm.DB, error) {
 
 // Migrate 执行项目内全部模型的自动迁移。
 func Migrate(db *gorm.DB) error {
-	return db.AutoMigrate(models.AutoMigrateModels()...)
+	if err := db.AutoMigrate(models.AutoMigrateModels()...); err != nil {
+		return err
+	}
+	return ensureSoftDeleteUniqueIndexes(db)
 }
 
 // MustMigrate 在迁移失败时直接终止进程，适用于启动即要求结构一致的场景。

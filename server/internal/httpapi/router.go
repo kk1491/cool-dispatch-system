@@ -120,6 +120,8 @@ func NewRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 		adminOnly.PUT("/settings/webhook-enabled", handler.UpdateWebhookEnabled)
 		adminOnly.PUT("/customers", handler.ReplaceCustomers)
 		adminOnly.DELETE("/customers/:id", handler.DeleteCustomer)
+		adminOnly.GET("/deleted-resources", handler.GetDeletedResources)
+		adminOnly.POST("/deleted-resources/restore", handler.RestoreDeletedResources)
 		adminOnly.PUT("/line-friends/:lineUid/customer", handler.LinkLineFriendCustomer)
 		// ---------- PAYUNi 支付订单管理（仅管理员） ----------
 		adminOnly.POST("/payment/orders", handler.CreatePaymentOrder)
