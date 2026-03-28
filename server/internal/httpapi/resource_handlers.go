@@ -57,6 +57,15 @@ type bootstrapSettings struct {
 	ReminderDays int `json:"reminder_days"`
 }
 
+// mutationResponse 統一承載寫接口成功後的提示文字與資料內容，
+// 避免前端在不同保存接口之間來回適配裸陣列、單欄位物件與臨時格式。
+type mutationResponse[T any] struct {
+	// Message 是可直接展示給管理頁的成功訊息。
+	Message string `json:"message"`
+	// Data 是本次保存後的最新資料快照。
+	Data T `json:"data"`
+}
+
 // loginPayload 表示登录接口接受的最小凭证载荷。
 type loginPayload struct {
 	// Phone 是登录手机号。
@@ -1285,7 +1294,10 @@ func (h *Handler) ReplaceTechnicians(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, mutationResponse[[]models.User]{
+		Message: "師傅資料已儲存",
+		Data:    result,
+	})
 }
 
 // UpdateTechnicianPassword 修改指定技师的登录密码，同时吊销该技师的所有旧令牌。
@@ -1377,7 +1389,10 @@ func (h *Handler) ReplaceZones(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, mutationResponse[[]models.ServiceZone]{
+		Message: "區域資料已儲存",
+		Data:    result,
+	})
 }
 
 // ReplaceServiceItems 批量覆盖标准服务项目列表。
@@ -1418,7 +1433,10 @@ func (h *Handler) ReplaceServiceItems(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, mutationResponse[[]models.ServiceItem]{
+		Message: "服務項目已儲存",
+		Data:    result,
+	})
 }
 
 // ReplaceExtraItems 批量覆盖额外收费项列表。
@@ -1458,7 +1476,10 @@ func (h *Handler) ReplaceExtraItems(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, mutationResponse[[]models.ExtraItem]{
+		Message: "額外費用項目已儲存",
+		Data:    result,
+	})
 }
 
 // CreateCashLedgerEntry 创建一条现金账流水记录。
@@ -1686,7 +1707,10 @@ func (h *Handler) UpdateReminderDays(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"reminder_days": payload.ReminderDays})
+	c.JSON(http.StatusOK, mutationResponse[gin.H]{
+		Message: "回訪提醒設定已儲存",
+		Data:    gin.H{"reminder_days": payload.ReminderDays},
+	})
 }
 
 // UpdateWebhookEnabled 更新管理员可控的 webhook 开关，但不直接修改环境变量依赖项。
@@ -1717,7 +1741,10 @@ func (h *Handler) UpdateWebhookEnabled(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, h.buildSettingsResponse(settings).Webhook)
+	c.JSON(http.StatusOK, mutationResponse[webhookSettingsResponse]{
+		Message: "Webhook 設定已儲存",
+		Data:    h.buildSettingsResponse(settings).Webhook,
+	})
 }
 
 // ReplaceCustomers 批量更新客户资料，用 upsert 逻辑确保前端编辑的客户数据能持久化到数据库。
@@ -1786,7 +1813,10 @@ func (h *Handler) ReplaceCustomers(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, mutationResponse[[]models.Customer]{
+		Message: "顧客資料已儲存",
+		Data:    result,
+	})
 }
 
 // DeleteCustomer 删除指定客户，前端客户管理页删除操作使用。

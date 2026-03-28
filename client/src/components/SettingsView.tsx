@@ -1,19 +1,65 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Trash2, Wrench, DollarSign, Plus, Webhook, Copy, CheckCircle2, AlertTriangle } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { Button, Card } from './shared';
 import { ExtraItem, ServiceItem } from '../types';
 import { WebhookSettingsPayload } from '../lib/api';
 
 interface SettingsViewProps {
   extraFeeProducts: ExtraItem[];
-  onUpdateExtraFeeProducts: (items: ExtraItem[]) => void;
+  onUpdateExtraFeeProducts: (items: ExtraItem[]) => Promise<unknown>;
   reminderDays: number;
-  onUpdateReminderDays: (days: number) => void;
+  onUpdateReminderDays: (days: number) => Promise<unknown>;
   webhookSettings: WebhookSettingsPayload;
-  onUpdateWebhookEnabled: (enabled: boolean) => void;
+  onUpdateWebhookEnabled: (enabled: boolean) => Promise<void> | void;
   serviceItems: ServiceItem[];
-  onUpdateServiceItems: (items: ServiceItem[]) => void;
+  onUpdateServiceItems: (items: ServiceItem[]) => Promise<unknown>;
 }
+
+interface ServiceItemDraft {
+  id: string;
+  name: string;
+  default_price: string;
+  description: string;
+}
+
+interface ExtraItemDraft {
+  id: string;
+  name: string;
+  price: string;
+}
+
+// toServiceItemDrafts 把后端读模型转换为可编辑草稿，允许金额输入框临时保持空字串。
+const toServiceItemDrafts = (items: ServiceItem[]): ServiceItemDraft[] => (
+  items.map(item => ({
+    id: item.id,
+    name: item.name,
+    default_price: String(item.default_price),
+    description: item.description || '',
+  }))
+);
+
+// toExtraItemDrafts 让额外费用项也能先保留本地草稿，避免输入时立刻触发远端同步。
+const toExtraItemDrafts = (items: ExtraItem[]): ExtraItemDraft[] => (
+  items.map(item => ({
+    id: item.id,
+    name: item.name,
+    price: String(item.price),
+  }))
+);
+
+// normalizeIntegerInput 统一把数字输入框的草稿值转成非负整数；空字串按 0 处理。
+const normalizeIntegerInput = (value: string): number => {
+  const trimmed = value.trim();
+  if (trimmed === '') {
+    return 0;
+  }
+  const parsed = Number.parseInt(trimmed, 10);
+  if (Number.isNaN(parsed)) {
+    return 0;
+  }
+  return Math.max(0, parsed);
+};
 
 export default function SettingsView({ 
   extraFeeProducts, 
@@ -26,29 +72,150 @@ export default function SettingsView({
   onUpdateServiceItems
 }: SettingsViewProps) {
   const [copied, setCopied] = useState(false);
+  const [serviceItemDrafts, setServiceItemDrafts] = useState<ServiceItemDraft[]>(() => toServiceItemDrafts(serviceItems));
+  const [extraItemDrafts, setExtraItemDrafts] = useState<ExtraItemDraft[]>(() => toExtraItemDrafts(extraFeeProducts));
+  const [reminderDaysDraft, setReminderDaysDraft] = useState(() => String(reminderDays));
+
+  useEffect(() => {
+    setServiceItemDrafts(toServiceItemDrafts(serviceItems));
+  }, [serviceItems]);
+
+  useEffect(() => {
+    setExtraItemDrafts(toExtraItemDrafts(extraFeeProducts));
+  }, [extraFeeProducts]);
+
+  useEffect(() => {
+    setReminderDaysDraft(String(reminderDays));
+  }, [reminderDays]);
+
+  // buildServiceItemsFromDrafts 在提交前统一做去空白与金额归一，避免 onBlur 分支各自复制转换逻辑。
+  const buildServiceItemsFromDrafts = (drafts: ServiceItemDraft[]): ServiceItem[] | null => {
+    const items = drafts.map(draft => ({
+      id: draft.id,
+      name: draft.name.trim(),
+      default_price: normalizeIntegerInput(draft.default_price),
+      description: draft.description.trim(),
+    }));
+    if (items.some(item => item.name === '')) {
+      return null;
+    }
+    return items;
+  };
+
+  // buildExtraItemsFromDrafts 统一处理额外费用项草稿，避免清空金额时误把空字串直接打到后端。
+  const buildExtraItemsFromDrafts = (drafts: ExtraItemDraft[]): ExtraItem[] | null => {
+    const items = drafts.map(draft => ({
+      id: draft.id,
+      name: draft.name.trim(),
+      price: normalizeIntegerInput(draft.price),
+    }));
+    if (items.some(item => item.name === '')) {
+      return null;
+    }
+    return items;
+  };
+
   const addProduct = () => {
-    onUpdateExtraFeeProducts([...extraFeeProducts, { id: Date.now().toString(), name: '新項目', price: 0 }]);
+    setExtraItemDrafts([...extraItemDrafts, { id: Date.now().toString(), name: '新項目', price: '0' }]);
   };
 
-  const updateProduct = (id: string, field: keyof ExtraItem, value: string | number) => {
-    onUpdateExtraFeeProducts(extraFeeProducts.map(p => p.id === id ? { ...p, [field]: value } : p));
+  const updateProductDraft = (id: string, field: keyof ExtraItemDraft, value: string) => {
+    setExtraItemDrafts(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
   };
 
-  const removeProduct = (id: string) => {
-    onUpdateExtraFeeProducts(extraFeeProducts.filter(p => p.id !== id));
+  const removeProduct = async (id: string) => {
+    const nextDrafts = extraItemDrafts.filter(item => item.id !== id);
+    setExtraItemDrafts(nextDrafts);
+    const nextItems = buildExtraItemsFromDrafts(nextDrafts);
+    if (!nextItems) {
+      toast.error('額外費用項目名稱不能為空');
+      setExtraItemDrafts(toExtraItemDrafts(extraFeeProducts));
+      return;
+    }
+    await onUpdateExtraFeeProducts(nextItems);
   };
 
   const addServiceItem = () => {
-    onUpdateServiceItems([...serviceItems, { id: Date.now().toString(), name: '新服務項目', default_price: 0, description: '' }]);
+    setServiceItemDrafts([...serviceItemDrafts, { id: Date.now().toString(), name: '新服務項目', default_price: '0', description: '' }]);
   };
 
-  const updateServiceItem = (id: string, field: keyof ServiceItem, value: string | number) => {
-    onUpdateServiceItems(serviceItems.map(item => item.id === id ? { ...item, [field]: value } : item));
+  const updateServiceItemDraft = (id: string, field: keyof ServiceItemDraft, value: string) => {
+    setServiceItemDrafts(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
   };
 
-  const removeServiceItem = (id: string) => {
-    if (serviceItems.length <= 1) return;
-    onUpdateServiceItems(serviceItems.filter(item => item.id !== id));
+  const removeServiceItem = async (id: string) => {
+    if (serviceItemDrafts.length <= 1) return;
+    const nextDrafts = serviceItemDrafts.filter(item => item.id !== id);
+    setServiceItemDrafts(nextDrafts);
+    const nextItems = buildServiceItemsFromDrafts(nextDrafts);
+    if (!nextItems) {
+      toast.error('服務項目名稱不能為空');
+      setServiceItemDrafts(toServiceItemDrafts(serviceItems));
+      return;
+    }
+    await onUpdateServiceItems(nextItems);
+  };
+
+  // commitServiceItemOnBlur 只在输入框失焦时提交单行草稿，避免每次键入都打远端接口。
+  const commitServiceItemOnBlur = async (id: string) => {
+    const nextItems = buildServiceItemsFromDrafts(serviceItemDrafts);
+    if (!nextItems) {
+      const current = serviceItems.find(item => item.id === id);
+      if (current) {
+        setServiceItemDrafts(prev => prev.map(item => item.id === id ? {
+          id: current.id,
+          name: current.name,
+          default_price: String(current.default_price),
+          description: current.description || '',
+        } : item));
+      }
+      toast.error('服務項目名稱不能為空');
+      return;
+    }
+    if (JSON.stringify(nextItems) === JSON.stringify(serviceItems)) {
+      setServiceItemDrafts(toServiceItemDrafts(nextItems));
+      return;
+    }
+    setServiceItemDrafts(toServiceItemDrafts(nextItems));
+    await onUpdateServiceItems(nextItems);
+  };
+
+  // commitExtraItemOnBlur 与服务项目保持同一交互策略：输入时只改本地，离焦后再保存。
+  const commitExtraItemOnBlur = async (id: string) => {
+    const nextItems = buildExtraItemsFromDrafts(extraItemDrafts);
+    if (!nextItems) {
+      const current = extraFeeProducts.find(item => item.id === id);
+      if (current) {
+        setExtraItemDrafts(prev => prev.map(item => item.id === id ? {
+          id: current.id,
+          name: current.name,
+          price: String(current.price),
+        } : item));
+      }
+      toast.error('額外費用項目名稱不能為空');
+      return;
+    }
+    if (JSON.stringify(nextItems) === JSON.stringify(extraFeeProducts)) {
+      setExtraItemDrafts(toExtraItemDrafts(nextItems));
+      return;
+    }
+    setExtraItemDrafts(toExtraItemDrafts(nextItems));
+    await onUpdateExtraFeeProducts(nextItems);
+  };
+
+  // commitReminderDaysOnBlur 仅在输入完成后提交回访天数，避免输入 1 -> 18 -> 180 时连续打三次接口。
+  const commitReminderDaysOnBlur = async () => {
+    const nextReminderDays = normalizeIntegerInput(reminderDaysDraft);
+    if (nextReminderDays <= 0) {
+      setReminderDaysDraft(String(reminderDays));
+      toast.error('回訪提醒天數必須大於 0');
+      return;
+    }
+    setReminderDaysDraft(String(nextReminderDays));
+    if (nextReminderDays === reminderDays) {
+      return;
+    }
+    await onUpdateReminderDays(nextReminderDays);
   };
 
   // handleCopyWebhookUrl 只复制后端回传的当前 URL，避免前端自行猜测生产地址。
@@ -169,7 +336,7 @@ export default function SettingsView({
         </div>
         <p className="text-xs text-slate-400">設定清洗服務的項目種類與預設金額，新增預約時會自動顯示這些選項</p>
         <div className="space-y-3">
-          {serviceItems.map(item => (
+          {serviceItemDrafts.map(item => (
             <div key={item.id} className="flex items-center gap-4 bg-slate-50 p-4 rounded-md" data-testid={`service-item-row-${item.id}`}>
               <div className="flex-1 space-y-2">
                 <div className="flex gap-3 items-center">
@@ -177,7 +344,8 @@ export default function SettingsView({
                     data-testid={`input-service-item-name-${item.id}`}
                     className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold focus:ring-1 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
                     value={item.name}
-                    onChange={e => updateServiceItem(item.id, 'name', e.target.value)}
+                    onChange={e => updateServiceItemDraft(item.id, 'name', e.target.value)}
+                    onBlur={() => void commitServiceItemOnBlur(item.id)}
                     placeholder="項目名稱"
                   />
                   <div className="flex items-center gap-1">
@@ -187,21 +355,23 @@ export default function SettingsView({
                       type="number"
                       className="w-28 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-right font-bold focus:ring-1 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
                       value={item.default_price}
-                      onChange={e => updateServiceItem(item.id, 'default_price', parseInt(e.target.value) || 0)}
+                      onChange={e => updateServiceItemDraft(item.id, 'default_price', e.target.value)}
+                      onBlur={() => void commitServiceItemOnBlur(item.id)}
                     />
                   </div>
                 </div>
                 <input
                   data-testid={`input-service-item-desc-${item.id}`}
                   className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-[11px] text-slate-500 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
-                  value={item.description || ''}
-                  onChange={e => updateServiceItem(item.id, 'description', e.target.value)}
+                  value={item.description}
+                  onChange={e => updateServiceItemDraft(item.id, 'description', e.target.value)}
+                  onBlur={() => void commitServiceItemOnBlur(item.id)}
                   placeholder="項目說明（選填）"
                 />
               </div>
-              {serviceItems.length > 1 && (
+              {serviceItemDrafts.length > 1 && (
                 <button
-                  onClick={() => removeServiceItem(item.id)}
+                  onClick={() => void removeServiceItem(item.id)}
                   className="text-slate-300 hover:text-red-500 transition-colors p-1"
                   data-testid={`button-remove-service-item-${item.id}`}
                 >
@@ -221,8 +391,9 @@ export default function SettingsView({
             data-testid="input-reminder-days"
             type="number"
             className="w-24 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            value={reminderDays}
-            onChange={e => onUpdateReminderDays(parseInt(e.target.value) || 180)}
+            value={reminderDaysDraft}
+            onChange={e => setReminderDaysDraft(e.target.value)}
+            onBlur={() => void commitReminderDaysOnBlur()}
           />
           <span className="text-sm text-slate-400">天</span>
         </div>
@@ -234,20 +405,22 @@ export default function SettingsView({
           <Button data-testid="button-add-product" onClick={addProduct}>+ 新增項目</Button>
         </div>
         <div className="space-y-3">
-          {extraFeeProducts.map(p => (
+          {extraItemDrafts.map(p => (
             <div key={p.id} className="flex gap-3 items-center bg-slate-50 p-3 rounded-md">
               <input 
                 className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
                 value={p.name}
-                onChange={e => updateProduct(p.id, 'name', e.target.value)}
+                onChange={e => updateProductDraft(p.id, 'name', e.target.value)}
+                onBlur={() => void commitExtraItemOnBlur(p.id)}
               />
               <input 
                 type="number"
                 className="w-24 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
                 value={p.price}
-                onChange={e => updateProduct(p.id, 'price', parseInt(e.target.value) || 0)}
+                onChange={e => updateProductDraft(p.id, 'price', e.target.value)}
+                onBlur={() => void commitExtraItemOnBlur(p.id)}
               />
-              <button onClick={() => removeProduct(p.id)} className="text-slate-300 hover:text-red-500">
+              <button onClick={() => void removeProduct(p.id)} className="text-slate-300 hover:text-red-500">
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>

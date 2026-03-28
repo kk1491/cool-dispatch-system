@@ -31,6 +31,13 @@ export interface WebhookSettingsPayload {
   dependency_summary: string;
 }
 
+// MutationResponse 統一描述寫接口返回的成功訊息與資料載荷，
+// 避免前端各頁面再直接依賴裸陣列或臨時欄位判斷是否保存成功。
+export interface MutationResponse<T> {
+  message: string;
+  data: T;
+}
+
 export type AppDataSnapshot = BootstrapPayload;
 
 export interface ReviewContextPayload {
@@ -421,10 +428,10 @@ export interface TechnicianWithPassword extends User {
 }
 
 export function replaceTechnicians(payload: (User | TechnicianWithPassword)[]): Promise<User[]> {
-  return requestJSON<User[]>('/api/technicians', {
+  return requestJSON<MutationResponse<User[]>>('/api/technicians', {
     method: 'PUT',
     body: JSON.stringify(payload),
-  });
+  }).then(response => response.data);
 }
 
 // updateTechnicianPassword 独立修改指定技师的登录密码，同时吊销其所有旧令牌。
@@ -436,24 +443,24 @@ export function updateTechnicianPassword(techId: number, password: string): Prom
 }
 
 export function replaceZones(payload: ServiceZone[]): Promise<ServiceZone[]> {
-  return requestJSON<ServiceZone[]>('/api/zones', {
+  return requestJSON<MutationResponse<ServiceZone[]>>('/api/zones', {
     method: 'PUT',
     body: JSON.stringify(payload),
-  });
+  }).then(response => response.data);
 }
 
 export function replaceServiceItems(payload: ServiceItem[]): Promise<ServiceItem[]> {
-  return requestJSON<ServiceItem[]>('/api/service-items', {
+  return requestJSON<MutationResponse<ServiceItem[]>>('/api/service-items', {
     method: 'PUT',
     body: JSON.stringify(payload),
-  });
+  }).then(response => response.data);
 }
 
 export function replaceExtraItems(payload: ExtraItem[]): Promise<ExtraItem[]> {
-  return requestJSON<ExtraItem[]>('/api/extra-items', {
+  return requestJSON<MutationResponse<ExtraItem[]>>('/api/extra-items', {
     method: 'PUT',
     body: JSON.stringify(payload),
-  });
+  }).then(response => response.data);
 }
 
 export function createCashLedgerEntry(payload: CashLedgerCreatePayload): Promise<CashLedgerEntry> {
@@ -486,26 +493,26 @@ export function createNotificationLog(payload: NotificationLogDraft): Promise<No
 }
 
 export function updateReminderDays(reminderDays: number): Promise<{ reminder_days: number }> {
-  return requestJSON<{ reminder_days: number }>('/api/settings/reminder-days', {
+  return requestJSON<MutationResponse<{ reminder_days: number }>>('/api/settings/reminder-days', {
     method: 'PUT',
     body: JSON.stringify({ reminder_days: reminderDays }),
-  });
+  }).then(response => response.data);
 }
 
 // updateWebhookEnabled 更新管理员持久化的 webhook 开关，不会直接改动服务端环境变量。
 export function updateWebhookEnabled(enabled: boolean): Promise<WebhookSettingsPayload> {
-  return requestJSON<WebhookSettingsPayload>('/api/settings/webhook-enabled', {
+  return requestJSON<MutationResponse<WebhookSettingsPayload>>('/api/settings/webhook-enabled', {
     method: 'PUT',
     body: JSON.stringify({ enabled }),
-  });
+  }).then(response => response.data);
 }
 
 // replaceCustomers 批量更新客户资料到后端，与师傅/区域等 replace 接口保持一致。
 export function replaceCustomers(payload: Customer[]): Promise<Customer[]> {
-  return requestJSON<Customer[]>('/api/customers', {
+  return requestJSON<MutationResponse<Customer[]>>('/api/customers', {
     method: 'PUT',
     body: JSON.stringify(payload),
-  });
+  }).then(response => response.data);
 }
 
 // deleteCustomer 删除指定客户。

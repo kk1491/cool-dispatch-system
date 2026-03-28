@@ -11,6 +11,14 @@ func respondMessage(c *gin.Context, status int, message string) {
 	c.JSON(status, gin.H{"message": localizedAPIMessage(message)})
 }
 
+// respondMutationData 统一输出“保存成功消息 + data 载荷”，避免写接口继续返回裸数组或临时字段。
+func respondMutationData(c *gin.Context, status int, message string, data any) {
+	c.JSON(status, gin.H{
+		"message": localizedAPIMessage(message),
+		"data":    data,
+	})
+}
+
 // abortWithMessage 统一输出会中断链路的 JSON message，并在出口处完成繁体中文转译。
 func abortWithMessage(c *gin.Context, status int, message string) {
 	c.AbortWithStatusJSON(status, gin.H{"message": localizedAPIMessage(message)})
@@ -31,6 +39,20 @@ func localizedAPIMessage(message string) string {
 		return "找不到請求的資源"
 	case "invalid credentials":
 		return "帳號或密碼錯誤"
+	case "technicians saved":
+		return "師傅資料已儲存"
+	case "zones saved":
+		return "區域設定已儲存"
+	case "service items saved":
+		return "服務項目設定已儲存"
+	case "extra items saved":
+		return "額外費用設定已儲存"
+	case "customers saved":
+		return "顧客資料已儲存"
+	case "reminder settings saved":
+		return "回訪提醒設定已儲存"
+	case "webhook settings saved":
+		return "Webhook 設定已儲存"
 	case "failed to create auth token":
 		return "建立登入憑證失敗"
 	case "not authenticated":

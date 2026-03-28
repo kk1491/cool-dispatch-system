@@ -722,6 +722,7 @@ export default function App() {
       const saved = await replaceTechnicians(next);
       setTechnicians(saved);
       setAllUsers(prev => [...prev.filter(item => item.role !== 'technician'), ...saved].sort((a, b) => a.id - b.id));
+      toast.success('師傅資料已儲存');
       await refreshAppSnapshot();
     } catch (err) {
       console.error(err);
@@ -733,6 +734,7 @@ export default function App() {
     try {
       const saved = await replaceZones(next);
       setZones(saved);
+      toast.success('區域設定已儲存');
       await refreshAppSnapshot();
     } catch (err) {
       console.error(err);
@@ -747,10 +749,13 @@ export default function App() {
     try {
       const saved = await replaceExtraItems(next);
       setExtraFeeProducts(saved);
+      toast.success('額外費用設定已儲存');
+      return '額外費用設定已儲存';
     } catch (err) {
       console.error(err);
       await refreshAppSnapshot();
       toast.error('同步額外費用失敗');
+      return '';
     }
   };
 
@@ -773,10 +778,13 @@ export default function App() {
         note: '',
         price: saved[0].default_price,
       }] : []));
+      toast.success('服務項目設定已儲存');
+      return '服務項目設定已儲存';
     } catch (err) {
       console.error(err);
       await refreshAppSnapshot();
       toast.error('同步服務項目失敗');
+      return '';
     }
   };
 
@@ -784,10 +792,13 @@ export default function App() {
     setReminderDays(next);
     try {
       await updateReminderDays(next);
+      toast.success('回訪提醒設定已儲存');
       await refreshAppSnapshot();
+      return '回訪提醒設定已儲存';
     } catch (err) {
       console.error(err);
       toast.error('同步回訪提醒設定失敗');
+      return '';
     }
   };
 
@@ -811,6 +822,7 @@ export default function App() {
     try {
       const saved = await replaceCustomers(next);
       setCustomers(saved);
+      toast.success('顧客資料已儲存');
       await refreshAppSnapshot();
     } catch (err) {
       console.error(err);
