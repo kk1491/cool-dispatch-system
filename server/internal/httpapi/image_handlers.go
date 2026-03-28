@@ -63,7 +63,7 @@ func (h *Handler) UploadImage(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, imageUploadResponse{
+	respondData(c, http.StatusOK, "success", imageUploadResponse{
 		ID:  result.ID,
 		URL: result.URL,
 	})
@@ -92,7 +92,7 @@ func (h *Handler) DeleteImage(c *gin.Context) {
 	imageID := cloudflare.ExtractImageIDFromURL(imageURL)
 	if imageID == "" {
 		// 如果无法从 URL 提取 ID，可能是非 Cloudflare 图片（如旧的 Base64 数据），静默成功
-		c.JSON(http.StatusOK, gin.H{"deleted": true, "message": "non-cloudflare image, skipped"})
+		respondData(c, http.StatusOK, "success", gin.H{"deleted": true, "message": "non-cloudflare image, skipped"})
 		return
 	}
 
@@ -103,7 +103,7 @@ func (h *Handler) DeleteImage(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"deleted": true})
+	respondData(c, http.StatusOK, "success", gin.H{"deleted": true})
 }
 
 // isAllowedImageType 检查上传文件的 MIME 类型是否属于允许的图片格式。

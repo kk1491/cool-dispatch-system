@@ -1,10 +1,17 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { buildApiUrl } from "./api";
+import { unwrapApiEnvelope } from "./api-envelope";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    try {
+      const body = await res.json();
+      const message = body?.message || res.statusText;
+      throw new Error(`${res.status}: ${message}`);
+    } catch {
+      const text = (await res.text()) || res.statusText;
+      throw new Error(`${res.status}: ${text}`);
+    }
   }
 }
 
@@ -26,21 +33,20 @@ export async function apiRequest(
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";
-export const getQueryFn: <T>(options: {
+export const getQueryFn = <T,>(options: {
   on401: UnauthorizedBehavior;
-}) => QueryFunction<T> =
-  ({ on401: unauthorizedBehavior }) =>
+}): QueryFunction<T> =>
   async ({ queryKey }) => {
     const res = await fetch(buildApiUrl(queryKey.join("/") as string), {
       credentials: "include",
     });
 
-    if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-      return null;
+    if (options.on401 === "returnNull" && res.status === 401) {
+      return null as T;
     }
 
     await throwIfResNotOk(res);
-    return await res.json();
+    return unwrapApiEnvelope<unknown>(await res.json()) as T;
   };
 
 export const queryClient = new QueryClient({

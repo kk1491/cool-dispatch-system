@@ -192,7 +192,7 @@ func (h *Handler) CreatePaymentOrder(c *gin.Context) {
 	logger.Infof("管理员 %d 创建支付订单: ID=%d, MerTradeNo=%s, 金额=%d",
 		order.CreatedByID, order.ID, order.MerTradeNo, order.TradeAmt)
 
-	c.JSON(http.StatusCreated, gin.H{
+	respondData(c, http.StatusCreated, "success", gin.H{
 		"order":         order,
 		"payment_token": paymentToken,
 		"payment_url":   "/pay/" + paymentToken,
@@ -214,7 +214,7 @@ func (h *Handler) ListPaymentOrders(c *gin.Context) {
 			logger.Warnf("刷新支付订单状态失败 (OrderID=%d): %v", orders[i].ID, err)
 		}
 	}
-	c.JSON(http.StatusOK, orders)
+	respondData(c, http.StatusOK, "success", orders)
 }
 
 // ==================== 客户公开接口：凭 Token 查看订单 ====================
@@ -231,7 +231,7 @@ func (h *Handler) GetPaymentOrderByToken(c *gin.Context) {
 	}
 
 	// 仅返回客户可见的信息
-	c.JSON(http.StatusOK, gin.H{
+	respondData(c, http.StatusOK, "success", gin.H{
 		"trade_amt":      order.TradeAmt,
 		"prod_desc":      order.ProdDesc,
 		"payment_method": order.PaymentMethod,
@@ -365,7 +365,7 @@ func (h *Handler) HandleTokenCreditPay(c *gin.Context) {
 		}, ""); updateErr != nil {
 			logger.Warnf("写入信用卡处理中状态失败 (OrderID=%d): %v", order.ID, updateErr)
 		}
-		c.JSON(http.StatusOK, gin.H{
+		respondData(c, http.StatusOK, "success", gin.H{
 			"status":  "UNKNOWN",
 			"message": paymentOrderCreditPendingMessage,
 		})
@@ -381,7 +381,7 @@ func (h *Handler) HandleTokenCreditPay(c *gin.Context) {
 		}, ""); err != nil {
 			logger.Warnf("写入信用卡失败状态失败 (OrderID=%d): %v", order.ID, err)
 		}
-		c.JSON(http.StatusOK, gin.H{
+		respondData(c, http.StatusOK, "success", gin.H{
 			"status":  resp.Status,
 			"message": "支付請求失敗: " + resp.Status,
 		})
@@ -398,7 +398,7 @@ func (h *Handler) HandleTokenCreditPay(c *gin.Context) {
 		}, ""); updateErr != nil {
 			logger.Warnf("写入信用卡解密待确认状态失败 (OrderID=%d): %v", order.ID, updateErr)
 		}
-		c.JSON(http.StatusOK, gin.H{
+		respondData(c, http.StatusOK, "success", gin.H{
 			"status":  "UNKNOWN",
 			"message": paymentOrderCreditPendingMessage,
 		})
@@ -443,7 +443,7 @@ func (h *Handler) HandleTokenCreditPay(c *gin.Context) {
 	logger.Infof("信用卡支付完成 OrderID=%d, TradeStatus=%s, TradeNo=%s",
 		order.ID, creditDetail.TradeStatus, creditDetail.TradeNo)
 
-	c.JSON(http.StatusOK, gin.H{
+	respondData(c, http.StatusOK, "success", gin.H{
 		"status":         creditDetail.Status,
 		"message":        creditDetail.Message,
 		"trade_status":   creditDetail.TradeStatus,
@@ -493,7 +493,7 @@ func (h *Handler) HandleTokenATMPay(c *gin.Context) {
 		}
 		if order.Status == "paying" && order.PayNo != "" {
 			// 已取号，返回现有帐号信息
-			c.JSON(http.StatusOK, gin.H{
+			respondData(c, http.StatusOK, "success", gin.H{
 				"status":          "SUCCESS",
 				"message":         "虛擬帳號已產生",
 				"pay_no":          order.PayNo,
@@ -531,7 +531,7 @@ func (h *Handler) HandleTokenATMPay(c *gin.Context) {
 			return
 		}
 		if latest != nil && latest.Status == "paying" && latest.PayNo != "" {
-			c.JSON(http.StatusOK, gin.H{
+			respondData(c, http.StatusOK, "success", gin.H{
 				"status":          "SUCCESS",
 				"message":         "虛擬帳號已產生",
 				"pay_no":          latest.PayNo,
@@ -580,7 +580,7 @@ func (h *Handler) HandleTokenATMPay(c *gin.Context) {
 		}, ""); updateErr != nil {
 			logger.Warnf("写入 ATM 处理中状态失败 (OrderID=%d): %v", order.ID, updateErr)
 		}
-		c.JSON(http.StatusOK, gin.H{
+		respondData(c, http.StatusOK, "success", gin.H{
 			"status":  "UNKNOWN",
 			"message": paymentOrderATMPendingMessage,
 		})
@@ -594,7 +594,7 @@ func (h *Handler) HandleTokenATMPay(c *gin.Context) {
 		}, ""); err != nil {
 			logger.Warnf("写入 ATM 失败状态失败 (OrderID=%d): %v", order.ID, err)
 		}
-		c.JSON(http.StatusOK, gin.H{
+		respondData(c, http.StatusOK, "success", gin.H{
 			"status":  resp.Status,
 			"message": "ATM 取號失敗: " + resp.Status,
 		})
@@ -611,7 +611,7 @@ func (h *Handler) HandleTokenATMPay(c *gin.Context) {
 		}, ""); updateErr != nil {
 			logger.Warnf("写入 ATM 解密待确认状态失败 (OrderID=%d): %v", order.ID, updateErr)
 		}
-		c.JSON(http.StatusOK, gin.H{
+		respondData(c, http.StatusOK, "success", gin.H{
 			"status":  "UNKNOWN",
 			"message": paymentOrderATMPendingMessage,
 		})
@@ -638,7 +638,7 @@ func (h *Handler) HandleTokenATMPay(c *gin.Context) {
 	logger.Infof("ATM 取号成功 OrderID=%d, PayNo=%s, ExpireDate=%s",
 		order.ID, atmDetail.PayNo, atmDetail.ExpireDate)
 
-	c.JSON(http.StatusOK, gin.H{
+	respondData(c, http.StatusOK, "success", gin.H{
 		"status":          atmDetail.Status,
 		"message":         atmDetail.Message,
 		"trade_no":        atmDetail.TradeNo,

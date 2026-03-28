@@ -60,6 +60,8 @@ type bootstrapSettings struct {
 // mutationResponse 統一承載寫接口成功後的提示文字與資料內容，
 // 避免前端在不同保存接口之間來回適配裸陣列、單欄位物件與臨時格式。
 type mutationResponse[T any] struct {
+	// Code 是成功響應的穩定機器碼，便於前端統一判斷。
+	Code string `json:"code"`
 	// Message 是可直接展示給管理頁的成功訊息。
 	Message string `json:"message"`
 	// Data 是本次保存後的最新資料快照。
@@ -532,7 +534,7 @@ func (h *Handler) Login(c *gin.Context) {
 	// 将 token 写入 HttpOnly cookie，有效期 30 天。
 	setAuthCookie(c, authToken.Token, int(tokenDuration.Seconds()), h.cookieSecure, h.cookieSameSite)
 
-	c.JSON(http.StatusOK, gin.H{"user": user})
+	respondData(c, http.StatusOK, "success", gin.H{"user": user})
 }
 
 // AuthMe 通过 cookie 中的 token 恢复登录态，前端页面刷新/服务重启后自动恢复用户身份。
@@ -556,7 +558,7 @@ func (h *Handler) AuthMe(c *gin.Context) {
 		setAuthCookie(c, tokenStr, int(tokenDuration.Seconds()), h.cookieSecure, h.cookieSameSite)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"user": user})
+	respondData(c, http.StatusOK, "success", gin.H{"user": user})
 }
 
 // Logout 注销当前用户：删除数据库中的 token 并清除 cookie。
@@ -578,7 +580,7 @@ func (h *Handler) Bootstrap(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, payload)
+	respondData(c, http.StatusOK, "success", payload)
 }
 
 // GetDashboardPageData 返回首页总览所需的最小数据集合，避免该页继续依赖 bootstrap 整包。
@@ -604,7 +606,7 @@ func (h *Handler) GetDashboardPageData(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, dashboardPageResponse{
+	respondData(c, http.StatusOK, "success", dashboardPageResponse{
 		Appointments: appointments,
 		Technicians:  technicians,
 		Customers:    customers,
@@ -630,7 +632,7 @@ func (h *Handler) GetCustomerPageData(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, customerPageResponse{
+	respondData(c, http.StatusOK, "success", customerPageResponse{
 		Customers:    customers,
 		Appointments: appointments,
 		Reviews:      reviews,
@@ -655,7 +657,7 @@ func (h *Handler) GetSettingsPageData(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, settingsPageResponse{
+	respondData(c, http.StatusOK, "success", settingsPageResponse{
 		ServiceItems:     serviceItems,
 		ExtraFeeProducts: extraItems,
 		Settings:         h.buildSettingsResponse(settings),
@@ -675,7 +677,7 @@ func (h *Handler) GetLinePageData(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, linePageResponse{
+	respondData(c, http.StatusOK, "success", linePageResponse{
 		LineFriends: buildLineFriendResponses(lineFriends),
 		Customers:   customers,
 	})
@@ -704,7 +706,7 @@ func (h *Handler) GetTechnicianPageData(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, technicianPageResponse{
+	respondData(c, http.StatusOK, "success", technicianPageResponse{
 		Technicians:  technicians,
 		Appointments: appointments,
 		Reviews:      reviews,
@@ -730,7 +732,7 @@ func (h *Handler) GetReminderPageData(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, reminderPageResponse{
+	respondData(c, http.StatusOK, "success", reminderPageResponse{
 		Customers:    customers,
 		Appointments: appointments,
 		Settings:     h.buildSettingsResponse(settings),
@@ -750,7 +752,7 @@ func (h *Handler) GetZonePageData(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, zonePageResponse{
+	respondData(c, http.StatusOK, "success", zonePageResponse{
 		Zones:       zones,
 		Technicians: technicians,
 	})
@@ -769,7 +771,7 @@ func (h *Handler) GetFinancialReportPageData(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, financialReportPageResponse{
+	respondData(c, http.StatusOK, "success", financialReportPageResponse{
 		Appointments: appointments,
 		Technicians:  technicians,
 	})
@@ -793,7 +795,7 @@ func (h *Handler) GetReviewDashboardPageData(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, reviewDashboardPageResponse{
+	respondData(c, http.StatusOK, "success", reviewDashboardPageResponse{
 		Reviews:      reviews,
 		Technicians:  technicians,
 		Appointments: appointments,
@@ -818,7 +820,7 @@ func (h *Handler) GetCashLedgerPageData(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, cashLedgerPageResponse{
+	respondData(c, http.StatusOK, "success", cashLedgerPageResponse{
 		Technicians:       technicians,
 		Appointments:      appointments,
 		CashLedgerEntries: entries,
@@ -832,7 +834,7 @@ func (h *Handler) ListAppointments(c *gin.Context) {
 		respondMessage(c, http.StatusInternalServerError, "failed to load appointments")
 		return
 	}
-	c.JSON(http.StatusOK, appointments)
+	respondData(c, http.StatusOK, "success", appointments)
 }
 
 // ListTechnicians 提供师傅列表读取接口，避免前端继续从 bootstrap 中顺带取出师傅数据。
@@ -842,7 +844,7 @@ func (h *Handler) ListTechnicians(c *gin.Context) {
 		respondMessage(c, http.StatusInternalServerError, "failed to load technicians")
 		return
 	}
-	c.JSON(http.StatusOK, technicians)
+	respondData(c, http.StatusOK, "success", technicians)
 }
 
 // ListCustomers 提供客户列表读取接口，供客户管理、回访提醒、LINE 绑定等页面独立取数。
@@ -852,7 +854,7 @@ func (h *Handler) ListCustomers(c *gin.Context) {
 		respondMessage(c, http.StatusInternalServerError, "failed to load customers")
 		return
 	}
-	c.JSON(http.StatusOK, customers)
+	respondData(c, http.StatusOK, "success", customers)
 }
 
 // ListZones 提供服务区域读取接口，供创建预约自动派工与区域管理页面复用。
@@ -862,7 +864,7 @@ func (h *Handler) ListZones(c *gin.Context) {
 		respondMessage(c, http.StatusInternalServerError, "failed to load zones")
 		return
 	}
-	c.JSON(http.StatusOK, zones)
+	respondData(c, http.StatusOK, "success", zones)
 }
 
 // ListServiceItems 提供服务项目读取接口，供设置页与预约编辑页统一取数。
@@ -872,7 +874,7 @@ func (h *Handler) ListServiceItems(c *gin.Context) {
 		respondMessage(c, http.StatusInternalServerError, "failed to load service items")
 		return
 	}
-	c.JSON(http.StatusOK, items)
+	respondData(c, http.StatusOK, "success", items)
 }
 
 // ListExtraItems 提供额外费用项目读取接口，避免设置页继续依赖 bootstrap 附带数组。
@@ -882,7 +884,7 @@ func (h *Handler) ListExtraItems(c *gin.Context) {
 		respondMessage(c, http.StatusInternalServerError, "failed to load extra items")
 		return
 	}
-	c.JSON(http.StatusOK, items)
+	respondData(c, http.StatusOK, "success", items)
 }
 
 // ListCashLedgerEntries 提供现金账流水读取接口，供现金账页独立刷新数据库结果。
@@ -892,7 +894,7 @@ func (h *Handler) ListCashLedgerEntries(c *gin.Context) {
 		respondMessage(c, http.StatusInternalServerError, "failed to load cash ledger entries")
 		return
 	}
-	c.JSON(http.StatusOK, entries)
+	respondData(c, http.StatusOK, "success", entries)
 }
 
 // ListReviews 提供评价列表读取接口，供评价看板与客户页统计独立读取。
@@ -902,7 +904,7 @@ func (h *Handler) ListReviews(c *gin.Context) {
 		respondMessage(c, http.StatusInternalServerError, "failed to load reviews")
 		return
 	}
-	c.JSON(http.StatusOK, reviews)
+	respondData(c, http.StatusOK, "success", reviews)
 }
 
 // ListNotificationLogs 提供通知记录读取接口，供通知抽屉和后续通知中心页面复用。
@@ -912,7 +914,7 @@ func (h *Handler) ListNotificationLogs(c *gin.Context) {
 		respondMessage(c, http.StatusInternalServerError, "failed to load notification logs")
 		return
 	}
-	c.JSON(http.StatusOK, logs)
+	respondData(c, http.StatusOK, "success", logs)
 }
 
 // GetSettings 返回系统级轻量配置，当前先暴露 reminder_days，便于前端摆脱 bootstrap 绑定。
@@ -922,7 +924,7 @@ func (h *Handler) GetSettings(c *gin.Context) {
 		respondMessage(c, http.StatusInternalServerError, "failed to load settings")
 		return
 	}
-	c.JSON(http.StatusOK, h.buildSettingsResponse(settings))
+	respondData(c, http.StatusOK, "success", h.buildSettingsResponse(settings))
 }
 
 // GetReviewContext 为公开评价页按随机评价令牌返回最小必要数据，避免外链暴露自增预约 ID。
@@ -955,7 +957,7 @@ func (h *Handler) GetReviewContext(c *gin.Context) {
 		response.Review = &review
 	}
 
-	c.JSON(http.StatusOK, response)
+	respondData(c, http.StatusOK, "success", response)
 }
 
 // CreateAppointment 创建预约并同步或更新客户主档。
@@ -1003,7 +1005,7 @@ func (h *Handler) CreateAppointment(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, appointment)
+	respondData(c, http.StatusCreated, "success", appointment)
 }
 
 // UpdateAppointment 更新预约，并限制技师只能修改自己的工单。
@@ -1089,7 +1091,7 @@ func (h *Handler) UpdateAppointment(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, appointment)
+	respondData(c, http.StatusOK, "success", appointment)
 }
 
 // inheritOmittedAppointmentPaymentFields 让更新接口在 payment_* 缺省时沿用数据库既有值。
@@ -1145,7 +1147,7 @@ func (h *Handler) DeleteAppointment(c *gin.Context) {
 	if err := h.db.First(&appointment, "id = ?", id).Error; err != nil {
 		// 记录不存在也视为删除成功（幂等），但无需清理图床。
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusOK, gin.H{"deleted": true})
+			respondData(c, http.StatusOK, "success", gin.H{"deleted": true})
 			return
 		}
 		respondMessage(c, http.StatusInternalServerError, "failed to find appointment")
@@ -1179,7 +1181,7 @@ func (h *Handler) DeleteAppointment(c *gin.Context) {
 		}(photoURLs)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"deleted": true})
+	respondData(c, http.StatusOK, "success", gin.H{"deleted": true})
 }
 
 // ReplaceTechnicians 批量覆盖技师列表，缺失项会被视为删除。
@@ -1295,6 +1297,7 @@ func (h *Handler) ReplaceTechnicians(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, mutationResponse[[]models.User]{
+		Code:    "OK",
 		Message: "師傅資料已儲存",
 		Data:    result,
 	})
@@ -1348,7 +1351,7 @@ func (h *Handler) UpdateTechnicianPassword(c *gin.Context) {
 	// 修改密码后吊销该技师的所有旧令牌，强制重新登录。
 	_ = h.db.Where("user_id = ?", user.ID).Delete(&models.AuthToken{})
 
-	c.JSON(http.StatusOK, gin.H{"message": "technician password updated"})
+	respondData(c, http.StatusOK, "success", gin.H{"message": "technician password updated"})
 }
 
 // ReplaceZones 批量覆盖服务区域列表。
@@ -1390,6 +1393,7 @@ func (h *Handler) ReplaceZones(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, mutationResponse[[]models.ServiceZone]{
+		Code:    "OK",
 		Message: "區域資料已儲存",
 		Data:    result,
 	})
@@ -1434,6 +1438,7 @@ func (h *Handler) ReplaceServiceItems(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, mutationResponse[[]models.ServiceItem]{
+		Code:    "OK",
 		Message: "服務項目已儲存",
 		Data:    result,
 	})
@@ -1477,6 +1482,7 @@ func (h *Handler) ReplaceExtraItems(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, mutationResponse[[]models.ExtraItem]{
+		Code:    "OK",
 		Message: "額外費用項目已儲存",
 		Data:    result,
 	})
@@ -1526,7 +1532,7 @@ func (h *Handler) CreateCashLedgerEntry(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, entry)
+	respondData(c, http.StatusCreated, "success", entry)
 }
 
 // CreateReview 为已完工预约按随机评价令牌创建或覆盖评价记录，保证一张预约单只保留一份最新评价快照。
@@ -1594,7 +1600,7 @@ func (h *Handler) CreateReview(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, review)
+	respondData(c, http.StatusCreated, "success", review)
 }
 
 // UpdateReviewShareLine 按随机评价令牌持久化评价页的 LINE 分享状态，确保前端分享操作会真实回写数据库。
@@ -1628,7 +1634,7 @@ func (h *Handler) UpdateReviewShareLine(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, review)
+	respondData(c, http.StatusOK, "success", review)
 }
 
 // CreateNotificationLog 记录预约消息发送日志，供后台追踪提醒或通知是否已经发出。
@@ -1678,7 +1684,7 @@ func (h *Handler) CreateNotificationLog(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, item)
+	respondData(c, http.StatusCreated, "success", item)
 }
 
 // UpdateReminderDays 更新系统回访提醒天数配置，确保运营后台修改后立即持久化生效。
@@ -1708,6 +1714,7 @@ func (h *Handler) UpdateReminderDays(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, mutationResponse[gin.H]{
+		Code:    "OK",
 		Message: "回訪提醒設定已儲存",
 		Data:    gin.H{"reminder_days": payload.ReminderDays},
 	})
@@ -1742,6 +1749,7 @@ func (h *Handler) UpdateWebhookEnabled(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, mutationResponse[webhookSettingsResponse]{
+		Code:    "OK",
 		Message: "Webhook 設定已儲存",
 		Data:    h.buildSettingsResponse(settings).Webhook,
 	})
@@ -1814,6 +1822,7 @@ func (h *Handler) ReplaceCustomers(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, mutationResponse[[]models.Customer]{
+		Code:    "OK",
 		Message: "顧客資料已儲存",
 		Data:    result,
 	})
@@ -1839,7 +1848,7 @@ func (h *Handler) DeleteCustomer(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"deleted": true})
+	respondData(c, http.StatusOK, "success", gin.H{"deleted": true})
 }
 
 // LinkLineFriendCustomer 维护 LINE 好友与客户的绑定关系，并同步客户档案中的 LINE 字段。
@@ -1936,7 +1945,7 @@ func (h *Handler) LinkLineFriendCustomer(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, lineFriend)
+	respondData(c, http.StatusOK, "success", lineFriend)
 }
 
 // normalizeOptionalString 统一把 *string 规整为去空白后的可选值，避免同一事务里多次重复 trim 判空。

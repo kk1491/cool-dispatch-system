@@ -1,4 +1,5 @@
 import { Appointment, AppointmentCreatePayload, AppointmentUpdatePayload, CashLedgerCreatePayload, CashLedgerEntry, Customer, ExtraItem, LineFriend, NotificationLog, NotificationLogDraft, Review, ReviewDraft, ServiceItem, ServiceZone, User } from '../types';
+import { ApiEnvelope, unwrapApiEnvelope } from './api-envelope';
 import { getAppointmentPaymentWriteModel, shouldPreserveLegacyPaymentFieldsOnUpdate } from './appointmentMetrics';
 
 export interface BootstrapPayload {
@@ -34,6 +35,7 @@ export interface WebhookSettingsPayload {
 // MutationResponse 統一描述寫接口返回的成功訊息與資料載荷，
 // 避免前端各頁面再直接依賴裸陣列或臨時欄位判斷是否保存成功。
 export interface MutationResponse<T> {
+  code: string;
   message: string;
   data: T;
 }
@@ -175,7 +177,7 @@ export async function requestJSON<T>(path: string, init?: RequestInit): Promise<
     return undefined as T;
   }
 
-  return response.json() as Promise<T>;
+  return unwrapApiEnvelope<T>(await response.json());
 }
 
 export function fetchBootstrap(): Promise<BootstrapPayload> {
@@ -428,10 +430,10 @@ export interface TechnicianWithPassword extends User {
 }
 
 export function replaceTechnicians(payload: (User | TechnicianWithPassword)[]): Promise<User[]> {
-  return requestJSON<MutationResponse<User[]>>('/api/technicians', {
+  return requestJSON<User[]>('/api/technicians', {
     method: 'PUT',
     body: JSON.stringify(payload),
-  }).then(response => response.data);
+  });
 }
 
 // updateTechnicianPassword 独立修改指定技师的登录密码，同时吊销其所有旧令牌。
@@ -443,24 +445,24 @@ export function updateTechnicianPassword(techId: number, password: string): Prom
 }
 
 export function replaceZones(payload: ServiceZone[]): Promise<ServiceZone[]> {
-  return requestJSON<MutationResponse<ServiceZone[]>>('/api/zones', {
+  return requestJSON<ServiceZone[]>('/api/zones', {
     method: 'PUT',
     body: JSON.stringify(payload),
-  }).then(response => response.data);
+  });
 }
 
 export function replaceServiceItems(payload: ServiceItem[]): Promise<ServiceItem[]> {
-  return requestJSON<MutationResponse<ServiceItem[]>>('/api/service-items', {
+  return requestJSON<ServiceItem[]>('/api/service-items', {
     method: 'PUT',
     body: JSON.stringify(payload),
-  }).then(response => response.data);
+  });
 }
 
 export function replaceExtraItems(payload: ExtraItem[]): Promise<ExtraItem[]> {
-  return requestJSON<MutationResponse<ExtraItem[]>>('/api/extra-items', {
+  return requestJSON<ExtraItem[]>('/api/extra-items', {
     method: 'PUT',
     body: JSON.stringify(payload),
-  }).then(response => response.data);
+  });
 }
 
 export function createCashLedgerEntry(payload: CashLedgerCreatePayload): Promise<CashLedgerEntry> {
@@ -493,26 +495,26 @@ export function createNotificationLog(payload: NotificationLogDraft): Promise<No
 }
 
 export function updateReminderDays(reminderDays: number): Promise<{ reminder_days: number }> {
-  return requestJSON<MutationResponse<{ reminder_days: number }>>('/api/settings/reminder-days', {
+  return requestJSON<{ reminder_days: number }>('/api/settings/reminder-days', {
     method: 'PUT',
     body: JSON.stringify({ reminder_days: reminderDays }),
-  }).then(response => response.data);
+  });
 }
 
 // updateWebhookEnabled 更新管理员持久化的 webhook 开关，不会直接改动服务端环境变量。
 export function updateWebhookEnabled(enabled: boolean): Promise<WebhookSettingsPayload> {
-  return requestJSON<MutationResponse<WebhookSettingsPayload>>('/api/settings/webhook-enabled', {
+  return requestJSON<WebhookSettingsPayload>('/api/settings/webhook-enabled', {
     method: 'PUT',
     body: JSON.stringify({ enabled }),
-  }).then(response => response.data);
+  });
 }
 
 // replaceCustomers 批量更新客户资料到后端，与师傅/区域等 replace 接口保持一致。
 export function replaceCustomers(payload: Customer[]): Promise<Customer[]> {
-  return requestJSON<MutationResponse<Customer[]>>('/api/customers', {
+  return requestJSON<Customer[]>('/api/customers', {
     method: 'PUT',
     body: JSON.stringify(payload),
-  }).then(response => response.data);
+  });
 }
 
 // deleteCustomer 删除指定客户。
@@ -570,7 +572,7 @@ export async function uploadImage(file: File): Promise<ImageUploadResult> {
     throw new Error(message);
   }
 
-  return response.json() as Promise<ImageUploadResult>;
+  return unwrapApiEnvelope<ImageUploadResult>(await response.json());
 }
 
 // deleteImage 从 Cloudflare Images 图床删除指定图片。

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -8,20 +9,58 @@ import (
 
 // respondMessage 统一输出对外 JSON message，并在出口处完成繁体中文转译。
 func respondMessage(c *gin.Context, status int, message string) {
-	c.JSON(status, gin.H{"message": localizedAPIMessage(message)})
+	c.JSON(status, gin.H{
+		"code":    responseCodeFromStatus(status),
+		"message": localizedAPIMessage(message),
+		"data":    nil,
+	})
 }
 
 // respondMutationData 统一输出“保存成功消息 + data 载荷”，避免写接口继续返回裸数组或临时字段。
 func respondMutationData(c *gin.Context, status int, message string, data any) {
 	c.JSON(status, gin.H{
+		"code":    responseCodeFromStatus(status),
 		"message": localizedAPIMessage(message),
 		"data":    data,
 	})
 }
 
+// respondData 统一输出成功数据 envelope，供 GET/POST/PATCH/DELETE 等成功路径复用。
+func respondData(c *gin.Context, status int, message string, data any) {
+	respondMutationData(c, status, message, data)
+}
+
 // abortWithMessage 统一输出会中断链路的 JSON message，并在出口处完成繁体中文转译。
 func abortWithMessage(c *gin.Context, status int, message string) {
-	c.AbortWithStatusJSON(status, gin.H{"message": localizedAPIMessage(message)})
+	c.AbortWithStatusJSON(status, gin.H{
+		"code":    responseCodeFromStatus(status),
+		"message": localizedAPIMessage(message),
+		"data":    nil,
+	})
+}
+
+// responseCodeFromStatus 把 HTTP 狀態碼轉成穩定字串，便於前端統一處理成功與失敗分支。
+func responseCodeFromStatus(status int) string {
+	switch {
+	case status >= 200 && status < 300:
+		return "OK"
+	case status == 400:
+		return "BAD_REQUEST"
+	case status == 401:
+		return "UNAUTHORIZED"
+	case status == 403:
+		return "FORBIDDEN"
+	case status == 404:
+		return "NOT_FOUND"
+	case status == 409:
+		return "CONFLICT"
+	case status == 422:
+		return "UNPROCESSABLE_ENTITY"
+	case status >= 500:
+		return "INTERNAL_ERROR"
+	default:
+		return fmt.Sprintf("HTTP_%d", status)
+	}
 }
 
 // localizedAPIMessage 把当前后端对外返回的英文 message 统一转换成繁体中文，
@@ -33,6 +72,10 @@ func localizedAPIMessage(message string) string {
 	}
 
 	switch trimmed {
+	case "ok":
+		return "成功"
+	case "success":
+		return "成功"
 	case "request body too large":
 		return "請求體過大"
 	case "Not Found":

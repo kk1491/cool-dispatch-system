@@ -109,7 +109,7 @@ func isLocalWebhookURL(raw string) bool {
 
 // Health 返回最小健康检查结果，供负载均衡和运维探针使用。
 func (h *Handler) Health(c *gin.Context) {
-	c.JSON(http.StatusOK, healthResponse{
+	respondData(c, http.StatusOK, "success", healthResponse{
 		Status:    "ok",
 		Timestamp: time.Now().UTC(),
 	})
@@ -149,7 +149,7 @@ func (h *Handler) ListLineData(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, buildLineFriendResponses(friends))
+	respondData(c, http.StatusOK, "success", buildLineFriendResponses(friends))
 }
 
 // buildLineFriendResponses 统一转换 LINE 好友响应字段，保证独立页面接口和资源接口结构一致。
