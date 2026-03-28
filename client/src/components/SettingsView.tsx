@@ -158,18 +158,14 @@ export default function SettingsView({
 
   // commitServiceItemOnBlur 只在输入框失焦时提交单行草稿，避免每次键入都打远端接口。
   const commitServiceItemOnBlur = async (id: string) => {
+    // 服務項目名稱若仍為空，代表管理員還在編輯或暫時清空；此時只保留本地草稿，
+    // 不觸發保存，也不提示錯誤，避免出現「空值保存不上」的干擾訊息。
+    if (serviceItemDrafts.some(item => item.id === id && item.name.trim() === '')) {
+      return;
+    }
     const nextItems = buildServiceItemsFromDrafts(serviceItemDrafts);
     if (!nextItems) {
-      const current = serviceItems.find(item => item.id === id);
-      if (current) {
-        setServiceItemDrafts(prev => prev.map(item => item.id === id ? {
-          id: current.id,
-          name: current.name,
-          default_price: String(current.default_price),
-          description: current.description || '',
-        } : item));
-      }
-      toast.error('服務項目名稱不能為空');
+      // 若其他列仍有空名稱，也同樣跳過提交，避免單列失焦時把整個列表判成保存失敗。
       return;
     }
     if (JSON.stringify(nextItems) === JSON.stringify(serviceItems)) {
@@ -182,17 +178,14 @@ export default function SettingsView({
 
   // commitExtraItemOnBlur 与服务项目保持同一交互策略：输入时只改本地，离焦后再保存。
   const commitExtraItemOnBlur = async (id: string) => {
+    // 額外費用項目名稱若暫時為空，代表管理員仍在編輯；此時只保留本地草稿，
+    // 不觸發保存，也不提示錯誤，避免空值編輯過程被干擾。
+    if (extraItemDrafts.some(item => item.id === id && item.name.trim() === '')) {
+      return;
+    }
     const nextItems = buildExtraItemsFromDrafts(extraItemDrafts);
     if (!nextItems) {
-      const current = extraFeeProducts.find(item => item.id === id);
-      if (current) {
-        setExtraItemDrafts(prev => prev.map(item => item.id === id ? {
-          id: current.id,
-          name: current.name,
-          price: String(current.price),
-        } : item));
-      }
-      toast.error('額外費用項目名稱不能為空');
+      // 若其他列仍有空名稱，也跳過提交，避免單列失焦時誤觸整份設定保存失敗。
       return;
     }
     if (JSON.stringify(nextItems) === JSON.stringify(extraFeeProducts)) {
