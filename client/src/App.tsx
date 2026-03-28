@@ -919,6 +919,33 @@ export default function App() {
     }
   };
 
+  const filteredAppointments = ((user?.role === 'admin')
+    ? appointments
+    : appointments.filter(appt => appt.technician_id === user?.id))
+    .filter(appt => {
+      const matchesStatus = statusFilter === 'all' ? true : appt.status === statusFilter;
+      const matchesTech = techFilter === 'all' ? true : appt.technician_id === techFilter;
+      const matchesAcType = acTypeFilter === 'all' ? true : appt.items.some(item => item.type === acTypeFilter);
+      const matchesSearch =
+        appt.customer_name.includes(searchQuery) ||
+        appt.phone.includes(searchQuery) ||
+        appt.address.includes(searchQuery);
+      const apptDate = appt.scheduled_at.split('T')[0];
+      const matchesDate =
+        (!dateRange.start || apptDate >= dateRange.start) &&
+        (!dateRange.end || apptDate <= dateRange.end);
+      return matchesStatus && matchesTech && matchesAcType && matchesSearch && matchesDate;
+    });
+  const {
+    page: appointmentPage,
+    pageSize: appointmentPageSize,
+    totalItems: appointmentTotalItems,
+    totalPages: appointmentTotalPages,
+    paginatedItems: paginatedAppointments,
+    setPage: setAppointmentPage,
+    setPageSize: setAppointmentPageSize,
+  } = useTablePagination(filteredAppointments, [user?.role || 'guest', user?.id || 0, statusFilter, techFilter, acTypeFilter, searchQuery, dateRange.start, dateRange.end, appointments.length]);
+
   if (!snapshotLoaded) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
@@ -973,33 +1000,6 @@ export default function App() {
   if (!user) {
     return <LoginPage onLogin={handleLogin} />;
   }
-
-  const filteredAppointments = (user.role === 'admin' 
-    ? appointments 
-    : appointments.filter(appt => appt.technician_id === user.id))
-    .filter(appt => {
-      const matchesStatus = statusFilter === 'all' ? true : appt.status === statusFilter;
-      const matchesTech = techFilter === 'all' ? true : appt.technician_id === techFilter;
-      const matchesAcType = acTypeFilter === 'all' ? true : appt.items.some(item => item.type === acTypeFilter);
-      const matchesSearch = 
-        appt.customer_name.includes(searchQuery) || 
-        appt.phone.includes(searchQuery) || 
-        appt.address.includes(searchQuery);
-      const apptDate = appt.scheduled_at.split('T')[0];
-      const matchesDate = 
-        (!dateRange.start || apptDate >= dateRange.start) && 
-        (!dateRange.end || apptDate <= dateRange.end);
-      return matchesStatus && matchesTech && matchesAcType && matchesSearch && matchesDate;
-    });
-  const {
-    page: appointmentPage,
-    pageSize: appointmentPageSize,
-    totalItems: appointmentTotalItems,
-    totalPages: appointmentTotalPages,
-    paginatedItems: paginatedAppointments,
-    setPage: setAppointmentPage,
-    setPageSize: setAppointmentPageSize,
-  } = useTablePagination(filteredAppointments, [user.role, statusFilter, techFilter, acTypeFilter, searchQuery, dateRange.start, dateRange.end, appointments.length]);
   // canAccessRecycleBin 收敛管理员进入回收站的唯一前端条件：管理员身份 + 指定隐藏 URL。
   const canAccessRecycleBin = user.role === 'admin' && isRecycleBinDirectPath;
 
