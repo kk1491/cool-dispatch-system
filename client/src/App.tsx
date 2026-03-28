@@ -100,6 +100,8 @@ import {
 type ViewType = 'dashboard' | 'list' | 'create' | 'technicians' | 'customers' | 'line' | 'settings' | 'financials' | 'reminders' | 'cashLedger' | 'schedule' | 'zones' | 'heatmap' | 'reviews' | 'payments' | 'recycleBin';
 
 const EMPTY_APPOINTMENT_ITEMS: ACUnit[] = [];
+// ADMIN_RECYCLE_BIN_PATH 是管理员回收站的隐藏入口，仅允许通过此固定 URL 直接访问前端管理界面。
+const ADMIN_RECYCLE_BIN_PATH = '/admin/recycle-bin';
 
 type CreateFormDraft = {
   customer_name?: string;
@@ -116,6 +118,10 @@ const toISOStringFromLocalInput = (date: string, time: string): string => {
 };
 
 export default function App() {
+  // isRecycleBinDirectPath 标记当前浏览器地址是否命中隐藏回收站入口，默认导航不会暴露该页面。
+  const [isRecycleBinDirectPath, setIsRecycleBinDirectPath] = useState(
+    () => typeof window !== 'undefined' && window.location.pathname === ADMIN_RECYCLE_BIN_PATH,
+  );
   const defaultWebhookSettings: WebhookSettingsPayload = {
     enabled: true,
     effective_enabled: false,
@@ -132,7 +138,11 @@ export default function App() {
   const [technicians, setTechnicians] = useState<User[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [lineFriends, setLineFriends] = useState<LineFriend[]>([]);
-  const [view, setView] = useState<ViewType>('dashboard');
+  const [view, setView] = useState<ViewType>(() => (
+    typeof window !== 'undefined' && window.location.pathname === ADMIN_RECYCLE_BIN_PATH
+      ? 'recycleBin'
+      : 'dashboard'
+  ));
   const [extraFeeProducts, setExtraFeeProducts] = useState<ExtraItem[]>([]);
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
   const [statusFilter, setStatusFilter] = useState<Appointment['status'] | 'all'>('all');
@@ -272,6 +282,25 @@ export default function App() {
       window.removeEventListener(AUTH_REQUIRED_EVENT, onAuthRequired);
     };
   }, []);
+
+  useEffect(() => {
+    // syncRecycleBinDirectPath 把浏览器地址与本地视图状态对齐，确保回收站只能从指定 URL 进入。
+    const syncRecycleBinDirectPath = () => {
+      const matched = window.location.pathname === ADMIN_RECYCLE_BIN_PATH;
+      setIsRecycleBinDirectPath(matched);
+      if (matched && user?.role === 'admin') {
+        setView('recycleBin');
+        return;
+      }
+      setView(prev => (prev === 'recycleBin' ? 'dashboard' : prev));
+    };
+
+    syncRecycleBinDirectPath();
+    window.addEventListener('popstate', syncRecycleBinDirectPath);
+    return () => {
+      window.removeEventListener('popstate', syncRecycleBinDirectPath);
+    };
+  }, [user?.role]);
 
   // refreshAppSnapshot 在初始化、进入快照型页面和写操作后统一回读真实资源级数据。
   const refreshAppSnapshot = async () => {
@@ -522,6 +551,10 @@ export default function App() {
     setUser(loggedInUser);
     // 登录成功后总是刷新一次快照，确保会话失效后重登不会继续沿用上一位用户残留的内存数据。
     await refreshAppSnapshot();
+    // 若管理员是通过隐藏回收站 URL 进入，则登录完成后直接保留在回收站视图。
+    if (typeof window !== 'undefined' && window.location.pathname === ADMIN_RECYCLE_BIN_PATH && loggedInUser.role === 'admin') {
+      setView('recycleBin');
+    }
     return loggedInUser;
   };
 
@@ -955,6 +988,8 @@ export default function App() {
         (!dateRange.end || apptDate <= dateRange.end);
       return matchesStatus && matchesTech && matchesAcType && matchesSearch && matchesDate;
     });
+  // canAccessRecycleBin 收敛管理员进入回收站的唯一前端条件：管理员身份 + 指定隐藏 URL。
+  const canAccessRecycleBin = user.role === 'admin' && isRecycleBinDirectPath;
 
   const headerTitle: Record<ViewType, string> = {
     dashboard: '首頁總覽',
@@ -1055,7 +1090,6 @@ export default function App() {
                 { key: 'zones' as ViewType, icon: MapPin, label: '區域管理' },
                 { key: 'reminders' as ViewType, icon: Clock, label: '回訪提醒' },
                 { key: 'settings' as ViewType, icon: Package, label: '系統設定' },
-                { key: 'recycleBin' as ViewType, icon: Trash2, label: '回收站' },
                 { key: 'financials' as ViewType, icon: DollarSign, label: '財務報表' },
                 { key: 'heatmap' as ViewType, icon: Map, label: '熱區地圖' },
                 { key: 'reviews' as ViewType, icon: Star, label: '客戶評價' },
@@ -1783,7 +1817,7 @@ export default function App() {
                 </motion.div>
               )}
 
-              {view === 'recycleBin' && user.role === 'admin' && (
+              {view === 'recycleBin' && canAccessRecycleBin && (
                 <motion.div key="recycleBin" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
                   <RecycleBinView onRestored={refreshAppSnapshot} />
                 </motion.div>

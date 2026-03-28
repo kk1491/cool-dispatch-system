@@ -129,7 +129,7 @@ type Appointment struct {
 	CreatedAt time.Time `json:"created_at" gorm:"comment:创建时间"`
 	// UpdatedAt 是预约最近更新时间。
 	UpdatedAt time.Time `json:"updated_at" gorm:"comment:更新时间"`
-	// DeletedAt 用于软删除预约，支持回收站恢复与延迟物理清理。
+	// DeletedAt 用于软删除预约，支持回收站恢复与长期保留历史记录。
 	DeletedAt gorm.DeletedAt `json:"deleted_at,omitempty" gorm:"index;comment:软删除时间"`
 }
 
