@@ -334,10 +334,10 @@ export default function FinancialReportView({ appointments, technicians, onRefre
                         )}
                       </td>
                       <td className="px-5 py-4 text-sm text-slate-600">
-                        <div className="flex flex-col items-start gap-1">
+                        <div className="flex items-center gap-2 whitespace-nowrap">
                           <span
                             className={cn(
-                              "px-2 py-1 rounded text-[10px] font-bold",
+                              "px-2 py-1 rounded text-[10px] font-bold whitespace-nowrap",
                               getPaymentMethodBadgeClass(paymentMethodLabel)
                             )}
                             data-testid={`text-payment-${a.id}`}
@@ -346,7 +346,7 @@ export default function FinancialReportView({ appointments, technicians, onRefre
                           </span>
                           <span
                             className={cn(
-                              "px-2 py-1 rounded text-[10px] font-bold",
+                              "px-2 py-1 rounded text-[10px] font-bold whitespace-nowrap",
                               getPaymentCollectionBadgeClass(collectionLabel)
                             )}
                             data-testid={`text-collection-status-${a.id}`}
@@ -371,13 +371,13 @@ export default function FinancialReportView({ appointments, technicians, onRefre
                           <button
                             type="button"
                             onClick={() => setPaymentDialogAppointmentId(a.id)}
-                            className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-100"
+                            className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-100"
                           >
                             <CreditCard className="h-3.5 w-3.5" />
                             建立付款連結
                           </button>
                         ) : (
-                          <span className="text-xs text-slate-300">不可建立</span>
+                          <span className="whitespace-nowrap text-xs text-slate-300">不可建立</span>
                         )}
                       </td>
                     </tr>
