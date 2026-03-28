@@ -12,8 +12,11 @@ import { zhTW } from 'date-fns/locale';
 import { toast } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
 import { CASH_LEDGER_OPEN_BUTTON_LABEL, getAppointmentCollectedAmount, isAppointmentFinished, isAppointmentRevenueCounted } from '../lib/appointmentMetrics';
+import { useTablePagination } from '../lib/tablePagination';
 import { cn } from '../lib/utils';
 import { Button, Card, Badge } from './shared';
+import MobileInfiniteCardList from './MobileInfiniteCardList';
+import TablePagination from './TablePagination';
 import { User, Appointment, ACType, ServiceZone, Review } from '../types';
 import { updateTechnicianPassword } from '../lib/api';
 
@@ -48,6 +51,15 @@ const TechEditor = ({ tech, onSave, zones, isNew }: { tech: User, onSave: (updat
   const days = [1, 2, 3, 4, 5, 6, 0];
   const weekdayDays = [1, 2, 3, 4, 5];
   const weekendDays = [6, 0];
+  const {
+    page: timeSlotPage,
+    pageSize: timeSlotPageSize,
+    totalItems: timeSlotTotalItems,
+    totalPages: timeSlotTotalPages,
+    paginatedItems: paginatedTimeSlots,
+    setPage: setTimeSlotPage,
+    setPageSize: setTimeSlotPageSize,
+  } = useTablePagination(timeSlots, []);
 
   const toggleSlot = (day: number, slot: string) => {
     const availability = edited.availability || [];
@@ -318,7 +330,48 @@ const TechEditor = ({ tech, onSave, zones, isNew }: { tech: User, onSave: (updat
           </button>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="space-y-3 md:hidden">
+          <MobileInfiniteCardList
+            items={timeSlots}
+            getKey={slot => slot}
+            renderItem={slot => (
+              <Card className="p-4 shadow-none">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <button
+                      data-testid={`toggle-slot-${slot}`}
+                      onClick={() => toggleRow(slot)}
+                      className="rounded-md bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700"
+                    >
+                      {slot}
+                    </button>
+                    <span className="text-xs text-slate-400">點選下方日期切換</span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    {days.map(d => {
+                      const isAvailable = edited.availability?.find(a => a.day === d)?.slots.includes(slot);
+                      return (
+                        <button
+                          key={d}
+                          onClick={() => toggleSlot(d, slot)}
+                          className={cn(
+                            'rounded-lg border px-2 py-2 text-xs font-bold transition-all',
+                            isAvailable
+                              ? 'border-blue-200 bg-blue-600 text-white'
+                              : 'border-slate-200 bg-white text-slate-500'
+                          )}
+                        >
+                          {['日', '一', '二', '三', '四', '五', '六'][d]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </Card>
+            )}
+          />
+        </div>
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr>
@@ -346,7 +399,7 @@ const TechEditor = ({ tech, onSave, zones, isNew }: { tech: User, onSave: (updat
               </tr>
             </thead>
             <tbody>
-              {timeSlots.map(slot => {
+              {paginatedTimeSlots.map(slot => {
                 const allRowSelected = days.every(day => {
                   const dayAvail = edited.availability?.find(a => a.day === day);
                   return dayAvail?.slots.includes(slot);
@@ -387,6 +440,16 @@ const TechEditor = ({ tech, onSave, zones, isNew }: { tech: User, onSave: (updat
             </tbody>
           </table>
         </div>
+        <TablePagination
+          page={timeSlotPage}
+          pageSize={timeSlotPageSize}
+          totalItems={timeSlotTotalItems}
+          totalPages={timeSlotTotalPages}
+          onPageChange={setTimeSlotPage}
+          onPageSizeChange={setTimeSlotPageSize}
+          itemLabel="列"
+          className="hidden rounded-lg border border-slate-100 md:flex"
+        />
       </div>
 
       <Button data-testid="button-save-tech" className="w-full py-4" onClick={() => {

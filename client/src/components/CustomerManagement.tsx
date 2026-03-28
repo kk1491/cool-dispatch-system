@@ -1,7 +1,10 @@
 import { useState, Fragment } from 'react';
 import { Search, ChevronDown, ChevronUp, Phone, MapPin, MessageSquare, Star, Calendar, DollarSign, Hash } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
+import { useTablePagination } from '../lib/tablePagination';
 import { Card, Badge } from './shared';
+import MobileInfiniteCardList from './MobileInfiniteCardList';
+import TablePagination from './TablePagination';
 import { Customer, Appointment, Review } from '../types';
 
 interface CustomerManagementProps {
@@ -11,6 +14,102 @@ interface CustomerManagementProps {
   reviews: Review[];
 }
 
+interface CustomerHistoryTableProps {
+  customerId: string;
+  appointments: Appointment[];
+}
+
+// CustomerHistoryTable 负责顾客详情中的服务历史分页，避免单一顾客历史过长时把详情区撑得过高。
+function CustomerHistoryTable({ customerId, appointments }: CustomerHistoryTableProps) {
+  const {
+    page,
+    pageSize,
+    totalItems,
+    totalPages,
+    paginatedItems,
+    setPage,
+    setPageSize,
+  } = useTablePagination(appointments, [customerId, appointments.length]);
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-3 md:hidden">
+        <MobileInfiniteCardList
+          items={appointments}
+          resetDeps={[customerId, appointments.length]}
+          getKey={item => item.id}
+          renderItem={a => (
+            <Card className="p-4 shadow-none">
+              <div className="space-y-2 text-sm text-slate-600">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-bold text-slate-900">{format(parseISO(a.scheduled_at), 'yyyy/MM/dd')}</p>
+                    <p className="mt-1 text-xs text-slate-400">{a.technician_name || '未指派師傅'}</p>
+                  </div>
+                  <Badge status={a.status} />
+                </div>
+                <div className="flex items-start justify-between gap-3">
+                  <span className="text-slate-400">清洗內容</span>
+                  <span className="max-w-[65%] text-right">{a.items.map(item => `${item.type}`).join('、')}{a.items.length > 0 && ` (${a.items.length}台)`}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-400">金額</span>
+                  <span className="font-medium text-slate-700">${a.total_amount.toLocaleString()}</span>
+                </div>
+              </div>
+            </Card>
+          )}
+        />
+      </div>
+      <div className="hidden overflow-x-auto md:block">
+      <table className="w-full text-left text-sm" data-testid={`table-history-${customerId}`}>
+        <thead>
+          <tr className="text-xs text-slate-400 uppercase tracking-wider border-b border-slate-100">
+            <th className="pb-2 pr-4">日期</th>
+            <th className="pb-2 pr-4">清洗內容</th>
+            <th className="pb-2 pr-4">師傅</th>
+            <th className="pb-2 pr-4">金額</th>
+            <th className="pb-2">狀態</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-50">
+          {paginatedItems.map(a => (
+            <tr key={a.id} data-testid={`history-row-${a.id}`}>
+              <td className="py-2 pr-4 text-slate-600">
+                {format(parseISO(a.scheduled_at), 'yyyy/MM/dd')}
+              </td>
+              <td className="py-2 pr-4 text-slate-600">
+                {a.items.map(item => `${item.type}`).join('、')}
+                {a.items.length > 0 && ` (${a.items.length}台)`}
+              </td>
+              <td className="py-2 pr-4 text-slate-600">
+                {a.technician_name || '-'}
+              </td>
+              <td className="py-2 pr-4 text-slate-600 font-medium">
+                ${a.total_amount.toLocaleString()}
+              </td>
+              <td className="py-2">
+                <Badge status={a.status} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      </div>
+      <TablePagination
+        className="mt-3 hidden rounded-lg border border-slate-100 md:flex"
+        page={page}
+        pageSize={pageSize}
+        totalItems={totalItems}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+        itemLabel="筆"
+      />
+    </div>
+  );
+}
+
 export default function CustomerManagement({ customers, onUpdate, appointments, reviews }: CustomerManagementProps) {
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -18,6 +117,15 @@ export default function CustomerManagement({ customers, onUpdate, appointments, 
   const filtered = customers.filter(c => 
     c.name.includes(search) || c.phone.includes(search) || c.address.includes(search)
   );
+  const {
+    page,
+    pageSize,
+    totalItems,
+    totalPages,
+    paginatedItems,
+    setPage,
+    setPageSize,
+  } = useTablePagination(filtered, [search]);
 
   const getCustomerAppointments = (c: Customer) => {
     return appointments
@@ -72,6 +180,109 @@ export default function CustomerManagement({ customers, onUpdate, appointments, 
       </div>
 
       <Card className="overflow-hidden">
+        <div className="space-y-3 p-3 md:hidden">
+          <MobileInfiniteCardList
+            items={filtered}
+            resetDeps={[search]}
+            getKey={item => item.id}
+            renderItem={c => {
+              const isExpanded = expandedId === c.id;
+              const stats = getCustomerStats(c);
+              const custAppts = getCustomerAppointments(c);
+              const custReviews = getCustomerReviews(c);
+
+              return (
+                <Card
+                  className="p-4 shadow-none"
+                  data-testid={`row-customer-${c.id}`}
+                  onClick={() => toggleExpand(c.id)}
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-base font-bold text-slate-900">{c.name}</p>
+                        <p className="mt-1 text-xs text-slate-400">{c.phone}</p>
+                      </div>
+                      {isExpanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+                    </div>
+                    <div className="space-y-2 text-sm text-slate-600">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-slate-400">地址</span>
+                        <span className="max-w-[65%] text-right">{c.address || '-'}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-slate-400">LINE</span>
+                        <span>{c.line_uid || c.line_id || '-'}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <div className="rounded-lg bg-slate-50 px-3 py-2">
+                          <p className="text-[10px] text-slate-400">總服務</p>
+                          <p className="mt-1 text-xs font-bold text-slate-700">{stats.totalServices} 次</p>
+                        </div>
+                        <div className="rounded-lg bg-slate-50 px-3 py-2">
+                          <p className="text-[10px] text-slate-400">總消費</p>
+                          <p className="mt-1 text-xs font-bold text-slate-700">${stats.totalSpent.toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </div>
+                    {isExpanded && (
+                      <div className="space-y-3 border-t border-slate-100 pt-3">
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div className="rounded-lg bg-slate-50 px-3 py-2">
+                            <p className="text-[10px] text-slate-400">最後服務</p>
+                            <p className="mt-1 text-xs font-bold text-slate-700">
+                              {stats.lastServiceDate ? format(new Date(stats.lastServiceDate), 'yyyy/MM/dd') : '-'}
+                            </p>
+                          </div>
+                          <div className="rounded-lg bg-slate-50 px-3 py-2">
+                            <p className="text-[10px] text-slate-400">平均評分</p>
+                            <p className="mt-1 text-xs font-bold text-slate-700">
+                              {stats.avgRating !== null ? stats.avgRating.toFixed(1) : '-'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <p className="text-xs font-bold text-slate-500">服務歷史</p>
+                          {custAppts.length === 0 ? (
+                            <p className="text-xs text-slate-400">尚無預約紀錄</p>
+                          ) : (
+                            <CustomerHistoryTable customerId={c.id} appointments={custAppts} />
+                          )}
+                        </div>
+
+                        {custReviews.length > 0 && (
+                          <div className="space-y-2">
+                            <p className="text-xs font-bold text-slate-500">客戶評價</p>
+                            <div className="space-y-2">
+                              {custReviews.map(r => (
+                                <div key={r.id} className="rounded-md border border-slate-100 p-3">
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-0.5">
+                                      {Array.from({ length: 5 }).map((_, i) => (
+                                        <Star
+                                          key={i}
+                                          className={`h-3.5 w-3.5 ${i < r.rating ? 'text-yellow-400 fill-yellow-400' : 'text-slate-200'}`}
+                                        />
+                                      ))}
+                                    </div>
+                                    <span className="text-xs text-slate-400">{format(parseISO(r.created_at), 'yyyy/MM/dd')}</span>
+                                  </div>
+                                  <p className="mt-2 text-sm text-slate-600">{r.comment}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              );
+            }}
+          />
+        </div>
+        <div className="hidden md:block">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50 text-xs font-bold text-slate-400 uppercase tracking-wider">
@@ -84,7 +295,7 @@ export default function CustomerManagement({ customers, onUpdate, appointments, 
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filtered.map(c => {
+            {paginatedItems.map(c => {
               const isExpanded = expandedId === c.id;
               const custAppts = getCustomerAppointments(c);
               const custReviews = getCustomerReviews(c);
@@ -180,41 +391,7 @@ export default function CustomerManagement({ customers, onUpdate, appointments, 
                             {custAppts.length === 0 ? (
                               <p className="text-sm text-slate-400">尚無預約紀錄</p>
                             ) : (
-                              <div className="overflow-x-auto">
-                                <table className="w-full text-left text-sm" data-testid={`table-history-${c.id}`}>
-                                  <thead>
-                                    <tr className="text-xs text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                                      <th className="pb-2 pr-4">日期</th>
-                                      <th className="pb-2 pr-4">清洗內容</th>
-                                      <th className="pb-2 pr-4">師傅</th>
-                                      <th className="pb-2 pr-4">金額</th>
-                                      <th className="pb-2">狀態</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-50">
-                                    {custAppts.map(a => (
-                                      <tr key={a.id} data-testid={`history-row-${a.id}`}>
-                                        <td className="py-2 pr-4 text-slate-600">
-                                          {format(parseISO(a.scheduled_at), 'yyyy/MM/dd')}
-                                        </td>
-                                        <td className="py-2 pr-4 text-slate-600">
-                                          {a.items.map(item => `${item.type}`).join('、')}
-                                          {a.items.length > 0 && ` (${a.items.length}台)`}
-                                        </td>
-                                        <td className="py-2 pr-4 text-slate-600">
-                                          {a.technician_name || '-'}
-                                        </td>
-                                        <td className="py-2 pr-4 text-slate-600 font-medium">
-                                          ${a.total_amount.toLocaleString()}
-                                        </td>
-                                        <td className="py-2">
-                                          <Badge status={a.status} />
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
+                              <CustomerHistoryTable customerId={c.id} appointments={custAppts} />
                             )}
                           </div>
 
@@ -252,6 +429,17 @@ export default function CustomerManagement({ customers, onUpdate, appointments, 
             })}
           </tbody>
         </table>
+        </div>
+        <TablePagination
+          className="hidden md:flex"
+          page={page}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          itemLabel="位"
+        />
       </Card>
     </div>
   );

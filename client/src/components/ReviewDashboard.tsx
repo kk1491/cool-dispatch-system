@@ -1,8 +1,11 @@
 import { useState, useMemo } from 'react';
 import { Star, Filter, BarChart3, AlertTriangle } from 'lucide-react';
+import { useTablePagination } from '../lib/tablePagination';
 import { cn } from '../lib/utils';
 import { Review, User, MisconductType } from '../types';
 import { Card, Button } from './shared';
+import MobileInfiniteCardList from './MobileInfiniteCardList';
+import TablePagination from './TablePagination';
 
 const MISCONDUCT_LABELS: Record<MisconductType, string> = {
   private_contact: '要求加私人聯繫方式',
@@ -63,6 +66,15 @@ export default function ReviewDashboard({ reviews, technicians, appointments }: 
     return Object.entries(stats)
       .sort(([, a], [, b]) => b - a) as [MisconductType, number][];
   }, [filteredReviews]);
+  const {
+    page,
+    pageSize,
+    totalItems,
+    totalPages,
+    paginatedItems,
+    setPage,
+    setPageSize,
+  } = useTablePagination(filteredReviews, [techFilter, ratingFilter, enrichedReviews.length]);
 
   const maxCount = Math.max(...ratingDistribution, 1);
 
@@ -180,7 +192,59 @@ export default function ReviewDashboard({ reviews, technicians, appointments }: 
           </Card>
         ) : (
           <Card className="overflow-hidden" data-testid="table-reviews">
-            <div className="overflow-x-auto">
+            <div className="space-y-3 p-3 md:hidden">
+              <MobileInfiniteCardList
+                items={filteredReviews}
+                resetDeps={[techFilter, ratingFilter, enrichedReviews.length]}
+                getKey={item => item.id}
+                renderItem={review => (
+                  <Card className="p-4 shadow-none">
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-base font-bold text-slate-900">{review.customer_name}</p>
+                          <div className="mt-1 flex gap-0.5">
+                            {[1, 2, 3, 4, 5].map(s => (
+                              <Star key={s} className={cn('h-3.5 w-3.5', review.rating >= s ? 'text-amber-400 fill-amber-400' : 'text-slate-200')} />
+                            ))}
+                          </div>
+                        </div>
+                        <span className="text-xs text-slate-400">{new Date(review.created_at).toLocaleDateString('zh-TW')}</span>
+                      </div>
+                      <div className="space-y-2 text-sm text-slate-600">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-slate-400">師傅</span>
+                          <span>{review.technician_name || '—'}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-slate-400">訂單</span>
+                          <span>#{review.appointment_id}</span>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-slate-400">留言</p>
+                          <p className="text-sm text-slate-600">{review.comment || '—'}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-slate-400">違規事項</p>
+                          {review.misconducts && review.misconducts.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {review.misconducts.map(m => (
+                                <span key={m} className="inline-block rounded border border-rose-100 bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-600 whitespace-nowrap">
+                                  {MISCONDUCT_LABELS[m]}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="inline-flex rounded border border-green-100 bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-600">無</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                )}
+              />
+            </div>
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/60">
@@ -194,7 +258,7 @@ export default function ReviewDashboard({ reviews, technicians, appointments }: 
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredReviews.map((review, idx) => (
+                  {paginatedItems.map((review, idx) => (
                     <tr
                       key={review.id}
                       className={cn("border-b border-slate-50 hover:bg-slate-50/50 transition-colors", idx % 2 === 1 && "bg-slate-25")}
@@ -248,6 +312,16 @@ export default function ReviewDashboard({ reviews, technicians, appointments }: 
                 </tbody>
               </table>
             </div>
+            <TablePagination
+              className="hidden md:flex"
+              page={page}
+              pageSize={pageSize}
+              totalItems={totalItems}
+              totalPages={totalPages}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              itemLabel="筆"
+            />
           </Card>
         )}
       </div>

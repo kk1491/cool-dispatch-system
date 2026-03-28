@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { Plus, X, MapPin, Users, Trash2, Edit2, Check } from 'lucide-react';
+import { useTablePagination } from '../lib/tablePagination';
 import { cn } from '../lib/utils';
 import { ServiceZone, User } from '../types';
 import { TAIPEI_DISTRICTS, NEW_TAIPEI_DISTRICTS } from '../data/constants';
 import { Button, Card } from './shared';
+import MobileInfiniteCardList from './MobileInfiniteCardList';
+import TablePagination from './TablePagination';
 
 interface ZoneManagementProps {
   zones: ServiceZone[];
@@ -88,6 +91,15 @@ export default function ZoneManagement({ zones, technicians, onUpdateZones }: Zo
   const getAssignedZoneCount = (techId: number) => {
     return zones.filter(z => z.assigned_technician_ids.includes(techId)).length;
   };
+  const {
+    page,
+    pageSize,
+    totalItems,
+    totalPages,
+    paginatedItems,
+    setPage,
+    setPageSize,
+  } = useTablePagination(techs, [zones.length, technicians.length]);
 
   return (
     <div className="space-y-8">
@@ -321,7 +333,57 @@ export default function ZoneManagement({ zones, technicians, onUpdateZones }: Zo
       {zones.length > 0 && (
         <Card className="p-6 space-y-4" data-testid="card-zone-overview">
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">師傅分配總覽</h3>
-          <div className="overflow-x-auto">
+          <div className="space-y-3 md:hidden">
+            <MobileInfiniteCardList
+              items={techs}
+              resetDeps={[zones.length, technicians.length]}
+              getKey={item => item.id}
+              renderItem={t => {
+                const assignedZones = zones.filter(z => z.assigned_technician_ids.includes(t.id));
+
+                return (
+                  <Card className="p-4 shadow-none">
+                    <div className="space-y-3 text-sm text-slate-600">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: t.color || '#6366f1' }}>
+                            {t.name[0]}
+                          </div>
+                          <div>
+                            <p className="font-bold text-slate-900">{t.name}</p>
+                            <p className="text-xs text-slate-400">區域數 {assignedZones.length}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-slate-400">負責區域</p>
+                        <div className="flex flex-wrap gap-1">
+                          {assignedZones.length === 0 ? (
+                            <span className="text-xs text-slate-400">未指派</span>
+                          ) : (
+                            assignedZones.map(z => (
+                              <span key={z.id} className="rounded-md bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
+                                {z.name}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-slate-400">技能</p>
+                        <div className="flex flex-wrap gap-1">
+                          {t.skills?.length ? t.skills.map(s => (
+                            <span key={s} className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{s}</span>
+                          )) : <span className="text-xs text-slate-400">-</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              }}
+            />
+          </div>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-sm text-left text-slate-600">
               <thead className="text-xs text-slate-700 uppercase bg-slate-50">
                 <tr>
@@ -332,7 +394,7 @@ export default function ZoneManagement({ zones, technicians, onUpdateZones }: Zo
                 </tr>
               </thead>
               <tbody>
-                {techs.map(t => {
+                {paginatedItems.map(t => {
                   const assignedZones = zones.filter(z => z.assigned_technician_ids.includes(t.id));
                   return (
                     <tr key={t.id} className="bg-white border-b" data-testid={`row-tech-overview-${t.id}`}>
@@ -371,9 +433,18 @@ export default function ZoneManagement({ zones, technicians, onUpdateZones }: Zo
               </tbody>
             </table>
           </div>
+          <TablePagination
+            className="hidden md:flex"
+            page={page}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            itemLabel="位"
+          />
         </Card>
       )}
     </div>
   );
 }
-

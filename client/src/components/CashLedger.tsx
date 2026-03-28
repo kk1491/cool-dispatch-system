@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { 
+import {
   ChevronLeft, Plus, DollarSign, ArrowDownLeft, ArrowUpRight, 
   FileText, Calendar
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import { cn } from '../lib/utils';
+import { useTablePagination } from '../lib/tablePagination';
 import {
   CASH_LEDGER_ADD_RETURN_LABEL,
   CASH_LEDGER_ADD_RETURN_TITLE,
@@ -22,6 +23,8 @@ import {
   isCashAppointment,
 } from '../lib/appointmentMetrics';
 import { Button, Card } from './shared';
+import MobileInfiniteCardList from './MobileInfiniteCardList';
+import TablePagination from './TablePagination';
 import { User, Appointment, CashLedgerCreatePayload, CashLedgerEntry } from '../types';
 
 interface CashLedgerProps {
@@ -71,6 +74,15 @@ export default function CashLedger({ technician, appointments, ledgerEntries, on
 
   const allEntries = [...autoCollectEntries, ...manualCollectEntries, ...returnEntries]
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const {
+    page,
+    pageSize,
+    totalItems,
+    totalPages,
+    paginatedItems,
+    setPage,
+    setPageSize,
+  } = useTablePagination(allEntries, [technician.id, ledgerEntries.length, appointments.length]);
 
   const totalCollected = autoCollectEntries.reduce((sum, e) => sum + e.amount, 0) +
     manualCollectEntries.reduce((sum, e) => sum + e.amount, 0);
@@ -202,7 +214,55 @@ export default function CashLedger({ technician, appointments, ledgerEntries, on
             <p className="text-slate-500">尚無帳務紀錄</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="space-y-3 p-3 md:hidden">
+            <MobileInfiniteCardList
+              items={allEntries}
+              resetDeps={[technician.id, ledgerEntries.length, appointments.length]}
+              getKey={item => item.id}
+              renderItem={entry => {
+                const relatedAppt = entry.appointment_id
+                  ? appointments.find(a => a.id === entry.appointment_id)
+                  : null;
+
+                return (
+                  <Card className="p-4 shadow-none">
+                    <div className="space-y-3 text-sm text-slate-600">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2 text-slate-500">
+                          <Calendar className="h-3.5 w-3.5" />
+                          {format(parseISO(entry.created_at), 'yyyy/MM/dd HH:mm')}
+                        </div>
+                        <span className={cn(
+                          'rounded-full px-3 py-1 text-xs font-bold border',
+                          entry.type === 'collect'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200/50'
+                            : 'bg-blue-50 text-blue-700 border-blue-200/50',
+                        )}>
+                          {entry.type === 'collect' ? '收款' : '回繳'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-slate-400">金額</span>
+                        <span className={cn('font-bold', entry.type === 'collect' ? 'text-emerald-700' : 'text-blue-700')}>
+                          {entry.type === 'collect' ? '+' : '-'}${entry.amount.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-slate-400">關聯訂單</span>
+                        <span className="max-w-[65%] text-right">{relatedAppt ? `#${relatedAppt.id} ${relatedAppt.customer_name}` : '-'}</span>
+                      </div>
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-slate-400">備註</span>
+                        <span className="max-w-[65%] text-right">{entry.note}</span>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              }}
+            />
+          </div>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-sm text-left text-slate-600">
               <thead className="text-xs text-slate-700 uppercase bg-slate-50">
                 <tr>
@@ -214,7 +274,7 @@ export default function CashLedger({ technician, appointments, ledgerEntries, on
                 </tr>
               </thead>
               <tbody>
-                {allEntries.map(entry => {
+                {paginatedItems.map(entry => {
                   const relatedAppt = entry.appointment_id 
                     ? appointments.find(a => a.id === entry.appointment_id) 
                     : null;
@@ -252,7 +312,18 @@ export default function CashLedger({ technician, appointments, ledgerEntries, on
               </tbody>
             </table>
           </div>
+          </>
         )}
+        <TablePagination
+          className="hidden md:flex"
+          page={page}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          itemLabel="筆"
+        />
       </Card>
     </div>
   );

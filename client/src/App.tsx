@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { format, parseISO, isAfter, isSameDay, addMinutes, subMinutes } from 'date-fns';
 import { Toaster, toast } from 'react-hot-toast';
 import { cn } from './lib/utils';
+import { useTablePagination } from './lib/tablePagination';
 import { User, Appointment, AppointmentCreatePayload, AppointmentReadablePaymentMethod, ACType, ACUnit, Customer, ExtraItem, CashLedgerCreatePayload, CashLedgerEntry, ServiceZone, NotificationLog, NotificationLogDraft, Review, ReviewDraft, LineFriend, ServiceItem } from './types';
 import { TAIPEI_DISTRICTS, NEW_TAIPEI_DISTRICTS } from './data/constants';
 import { Button, Card, Badge } from './components/shared';
@@ -35,6 +36,8 @@ import PaymentOrderCreateDialog from './components/PaymentOrderCreateDialog';
 import RecycleBinView from './components/RecycleBinView';
 import ReviewDashboard from './components/ReviewDashboard';
 import DashboardView from './components/DashboardView';
+import MobileInfiniteCardList from './components/MobileInfiniteCardList';
+import TablePagination from './components/TablePagination';
 import { getAutoDispatchSuggestions, DispatchScore } from './lib/autoDispatch';
 import {
   CASH_LEDGER_RETURN_FAILURE_MESSAGE,
@@ -988,6 +991,15 @@ export default function App() {
         (!dateRange.end || apptDate <= dateRange.end);
       return matchesStatus && matchesTech && matchesAcType && matchesSearch && matchesDate;
     });
+  const {
+    page: appointmentPage,
+    pageSize: appointmentPageSize,
+    totalItems: appointmentTotalItems,
+    totalPages: appointmentTotalPages,
+    paginatedItems: paginatedAppointments,
+    setPage: setAppointmentPage,
+    setPageSize: setAppointmentPageSize,
+  } = useTablePagination(filteredAppointments, [user.role, statusFilter, techFilter, acTypeFilter, searchQuery, dateRange.start, dateRange.end, appointments.length]);
   // canAccessRecycleBin 收敛管理员进入回收站的唯一前端条件：管理员身份 + 指定隐藏 URL。
   const canAccessRecycleBin = user.role === 'admin' && isRecycleBinDirectPath;
 
@@ -1292,65 +1304,145 @@ export default function App() {
                           <p className="text-slate-500">目前沒有符合條件的預約單</p>
                         </div>
                       ) : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm text-left text-slate-600">
-                            <thead className="text-xs text-slate-700 uppercase bg-slate-50">
-                              <tr>
-                                <th className="px-4 py-3">姓名</th>
-                                <th className="px-4 py-3">行動電話</th>
-                                <th className="px-4 py-3">施工地址</th>
-                                <th className="px-4 py-3">預約時間</th>
-                                <th className="px-4 py-3">清洗內容</th>
-                                <th className="px-4 py-3">付款方式</th>
-                                <th className="px-4 py-3">狀態</th>
-                                <th className="px-4 py-3">操作</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {filteredAppointments.map(appt => {
+                        <>
+                          <div className="space-y-3 md:hidden">
+                            <MobileInfiniteCardList
+                              items={filteredAppointments}
+                              resetDeps={[user.role, statusFilter, techFilter, acTypeFilter, searchQuery, dateRange.start, dateRange.end, appointments.length]}
+                              getKey={item => item.id}
+                              renderItem={appt => {
                                 const isLate = appt.status !== 'completed' && isAfter(new Date(), parseISO(appt.scheduled_at));
                                 const canCreatePaymentLink = isPaymentLinkCreatableAppointment(appt);
+
                                 return (
-                                  <tr 
-                                    key={appt.id} 
-                                    onClick={() => { setSelectedAppt(appt); setIsDrawerOpen(true); setIsEditing(false); }}
-                                    className="bg-white border-b hover:bg-slate-50 cursor-pointer"
+                                  <Card
+                                    className="p-4 shadow-none"
                                     data-testid={`row-appointment-${appt.id}`}
+                                    onClick={() => { setSelectedAppt(appt); setIsDrawerOpen(true); setIsEditing(false); }}
                                   >
-                                    <td className="px-4 py-3 font-medium text-slate-900">{appt.customer_name}</td>
-                                    <td className="px-4 py-3">{appt.phone}</td>
-                                    <td className="px-4 py-3">{appt.address}</td>
-                                    <td className={cn("px-4 py-3", isLate ? "text-red-500 font-medium" : "")}>
-                                      {format(parseISO(appt.scheduled_at), 'MM/dd HH:mm')}
-                                    </td>
-                                    <td className="px-4 py-3">{appt.items.length} 台</td>
-                                    <td className="px-4 py-3">{getPaymentMethodLabel(appt)}</td>
-                                    <td className="px-4 py-3"><Badge status={appt.status} /></td>
-                                    <td className="px-4 py-3">
-                                      {canCreatePaymentLink ? (
-                                        <button
-                                          type="button"
-                                          onClick={event => {
-                                            event.stopPropagation();
-                                            setPaymentDialogAppointmentId(appt.id);
-                                          }}
-                                          className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-100"
-                                        >
-                                          <CreditCard className="w-3.5 h-3.5" />
-                                          建立付款連結
-                                        </button>
-                                      ) : !isCollectibleAppointment(appt) ? (
-                                        <span className="text-xs text-slate-300">無收款</span>
-                                      ) : (
-                                        <span className="text-xs text-slate-300">已收款或無餘額</span>
-                                      )}
-                                    </td>
-                                  </tr>
+                                    <div className="space-y-3">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                          <p className="text-base font-bold text-slate-900">{appt.customer_name}</p>
+                                          <p className="mt-1 text-xs text-slate-400">{appt.phone}</p>
+                                        </div>
+                                        <Badge status={appt.status} />
+                                      </div>
+                                      <div className="space-y-2 text-sm text-slate-600">
+                                        <div className="flex items-start justify-between gap-3">
+                                          <span className="text-slate-400">地址</span>
+                                          <span className="max-w-[65%] text-right">{appt.address}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-3">
+                                          <span className="text-slate-400">預約時間</span>
+                                          <span className={cn(isLate ? 'font-medium text-red-500' : 'text-slate-700')}>
+                                            {format(parseISO(appt.scheduled_at), 'MM/dd HH:mm')}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-3">
+                                          <span className="text-slate-400">清洗內容</span>
+                                          <span>{appt.items.length} 台</span>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-3">
+                                          <span className="text-slate-400">付款方式</span>
+                                          <span>{getPaymentMethodLabel(appt)}</span>
+                                        </div>
+                                      </div>
+                                      <div className="pt-1">
+                                        {canCreatePaymentLink ? (
+                                          <button
+                                            type="button"
+                                            onClick={event => {
+                                              event.stopPropagation();
+                                              setPaymentDialogAppointmentId(appt.id);
+                                            }}
+                                            className="inline-flex w-full items-center justify-center gap-1 rounded-lg bg-blue-50 px-3 py-2 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-100"
+                                          >
+                                            <CreditCard className="w-3.5 h-3.5" />
+                                            建立付款連結
+                                          </button>
+                                        ) : !isCollectibleAppointment(appt) ? (
+                                          <div className="text-center text-xs text-slate-300">無收款</div>
+                                        ) : (
+                                          <div className="text-center text-xs text-slate-300">已收款或無餘額</div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </Card>
                                 );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
+                              }}
+                            />
+                          </div>
+                          <div className="hidden overflow-x-auto md:block">
+                            <table className="w-full text-sm text-left text-slate-600">
+                              <thead className="text-xs text-slate-700 uppercase bg-slate-50">
+                                <tr>
+                                  <th className="px-4 py-3">姓名</th>
+                                  <th className="px-4 py-3">行動電話</th>
+                                  <th className="px-4 py-3">施工地址</th>
+                                  <th className="px-4 py-3">預約時間</th>
+                                  <th className="px-4 py-3">清洗內容</th>
+                                  <th className="px-4 py-3">付款方式</th>
+                                  <th className="px-4 py-3">狀態</th>
+                                  <th className="px-4 py-3">操作</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {paginatedAppointments.map(appt => {
+                                  const isLate = appt.status !== 'completed' && isAfter(new Date(), parseISO(appt.scheduled_at));
+                                  const canCreatePaymentLink = isPaymentLinkCreatableAppointment(appt);
+                                  return (
+                                    <tr 
+                                      key={appt.id} 
+                                      onClick={() => { setSelectedAppt(appt); setIsDrawerOpen(true); setIsEditing(false); }}
+                                      className="bg-white border-b hover:bg-slate-50 cursor-pointer"
+                                      data-testid={`row-appointment-${appt.id}`}
+                                    >
+                                      <td className="px-4 py-3 font-medium text-slate-900">{appt.customer_name}</td>
+                                      <td className="px-4 py-3">{appt.phone}</td>
+                                      <td className="px-4 py-3">{appt.address}</td>
+                                      <td className={cn("px-4 py-3", isLate ? "text-red-500 font-medium" : "")}>
+                                        {format(parseISO(appt.scheduled_at), 'MM/dd HH:mm')}
+                                      </td>
+                                      <td className="px-4 py-3">{appt.items.length} 台</td>
+                                      <td className="px-4 py-3">{getPaymentMethodLabel(appt)}</td>
+                                      <td className="px-4 py-3"><Badge status={appt.status} /></td>
+                                      <td className="px-4 py-3">
+                                        {canCreatePaymentLink ? (
+                                          <button
+                                            type="button"
+                                            onClick={event => {
+                                              event.stopPropagation();
+                                              setPaymentDialogAppointmentId(appt.id);
+                                            }}
+                                            className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-100"
+                                          >
+                                            <CreditCard className="w-3.5 h-3.5" />
+                                            建立付款連結
+                                          </button>
+                                        ) : !isCollectibleAppointment(appt) ? (
+                                          <span className="text-xs text-slate-300">無收款</span>
+                                        ) : (
+                                          <span className="text-xs text-slate-300">已收款或無餘額</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                          <TablePagination
+                            className="hidden md:flex"
+                            page={appointmentPage}
+                            pageSize={appointmentPageSize}
+                            totalItems={appointmentTotalItems}
+                            totalPages={appointmentTotalPages}
+                            onPageChange={setAppointmentPage}
+                            onPageSizeChange={setAppointmentPageSize}
+                            itemLabel="筆"
+                          />
+                        </>
                       )}
                     </div>
                   </Card>

@@ -3,6 +3,7 @@ import { format, parseISO, startOfMonth, endOfMonth, subMonths, isWithinInterval
 import { Download, Search, Filter, CreditCard } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { cn } from '../lib/utils';
+import { useTablePagination } from '../lib/tablePagination';
 import {
   getAppointmentCollectedAmount,
   getAppointmentClosedAt,
@@ -19,6 +20,8 @@ import {
 } from '../lib/appointmentMetrics';
 import { isPaymentLinkCreatableAppointment } from '../lib/paymentOrder';
 import { Button, Card } from './shared';
+import MobileInfiniteCardList from './MobileInfiniteCardList';
+import TablePagination from './TablePagination';
 import { Appointment, User } from '../types';
 import PaymentOrderCreateDialog from './PaymentOrderCreateDialog';
 
@@ -117,6 +120,15 @@ export default function FinancialReportView({ appointments, technicians, onRefre
   const totalPaid = filtered.reduce((sum, a) => sum + getAppointmentCollectedAmount(a), 0);
   const totalDiff = filtered.reduce((sum, a) => sum + getOutstandingAmount(a), 0);
   const totalUnits = filtered.reduce((sum, a) => sum + a.items.length, 0);
+  const {
+    page,
+    pageSize,
+    totalItems,
+    totalPages,
+    paginatedItems,
+    setPage,
+    setPageSize,
+  } = useTablePagination(filtered, [datePreset, customStart, customEnd, techFilter, paymentMethodFilter, collectionFilter, searchQuery]);
 
   const dateLabel = datePreset === 'thisMonth' ? format(thisMonthStart, 'yyyy年M月')
     : datePreset === 'lastMonth' ? format(lastMonthStart, 'yyyy年M月')
@@ -276,7 +288,92 @@ export default function FinancialReportView({ appointments, technicians, onRefre
       </div>
 
       <Card className="overflow-hidden border-slate-100">
-        <div className="overflow-x-auto">
+        <div className="space-y-3 p-3 md:hidden">
+          <MobileInfiniteCardList
+            items={filtered}
+            resetDeps={[datePreset, customStart, customEnd, techFilter, paymentMethodFilter, collectionFilter, searchQuery]}
+            getKey={item => item.id}
+            emptyState={<div className="px-4 py-12 text-center text-sm text-slate-400">目前尚無符合條件的訂單資料</div>}
+            renderItem={a => {
+              const expected = getChargeableAmount(a);
+              const paid = getAppointmentCollectedAmount(a);
+              const diff = getOutstandingAmount(a);
+              const collectionLabel = getPaymentCollectionLabel(a);
+              const paymentMethodLabel = getPaymentMethodLabel(a);
+              const canCreatePaymentLink = isPaymentLinkCreatableAppointment(a);
+              const unitDetail = a.items.map(i => i.type).join('、');
+              const tech = technicians.find(t => t.id === a.technician_id);
+
+              return (
+                <Card className="p-4 shadow-none">
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-base font-bold text-slate-900">{a.customer_name}</p>
+                        <p className="mt-1 text-xs text-slate-400">{format(parseISO(getAppointmentClosedAt(a)), 'yyyy/MM/dd')}</p>
+                      </div>
+                      <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">
+                        {a.items.length} 台
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 text-sm text-slate-600">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-slate-400">師傅</span>
+                        <span className="font-medium text-slate-700">{tech?.name || a.technician_name || '—'}</span>
+                      </div>
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="pt-1 text-slate-400">付款</span>
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <span className={cn('rounded-md px-2 py-1 text-[10px] font-bold whitespace-nowrap', getPaymentMethodBadgeClass(paymentMethodLabel))}>
+                            {paymentMethodLabel}
+                          </span>
+                          <span className={cn('rounded-md px-2 py-1 text-[10px] font-bold whitespace-nowrap', getPaymentCollectionBadgeClass(collectionLabel))}>
+                            {collectionLabel}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-slate-400">機型</span>
+                        <span className="max-w-[65%] text-right text-sm text-slate-600">{unitDetail || '—'}</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="rounded-lg bg-slate-50 px-2 py-2">
+                          <p className="text-[10px] text-slate-400">應收</p>
+                          <p className="mt-1 text-xs font-bold text-slate-700">${expected.toLocaleString()}</p>
+                        </div>
+                        <div className="rounded-lg bg-emerald-50 px-2 py-2">
+                          <p className="text-[10px] text-emerald-500">實收</p>
+                          <p className="mt-1 text-xs font-bold text-emerald-700">${paid.toLocaleString()}</p>
+                        </div>
+                        <div className="rounded-lg bg-rose-50 px-2 py-2">
+                          <p className="text-[10px] text-rose-400">未收</p>
+                          <p className="mt-1 text-xs font-bold text-rose-600">${Math.max(diff, 0).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-1">
+                      {canCreatePaymentLink ? (
+                        <button
+                          type="button"
+                          onClick={() => setPaymentDialogAppointmentId(a.id)}
+                          className="inline-flex w-full items-center justify-center gap-1 rounded-lg bg-blue-50 px-3 py-2 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-100"
+                        >
+                          <CreditCard className="h-3.5 w-3.5" />
+                          建立付款連結
+                        </button>
+                      ) : (
+                        <div className="text-center text-xs text-slate-300">不可建立</div>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              );
+            }}
+          />
+        </div>
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">
@@ -297,7 +394,7 @@ export default function FinancialReportView({ appointments, technicians, onRefre
                   <td colSpan={9} className="px-6 py-12 text-center text-slate-400">目前尚無符合條件的訂單資料</td>
                 </tr>
               ) : (
-                filtered.map(a => {
+                paginatedItems.map(a => {
                   const expected = getChargeableAmount(a);
                   const paid = getAppointmentCollectedAmount(a);
                   const diff = getOutstandingAmount(a);
@@ -387,6 +484,16 @@ export default function FinancialReportView({ appointments, technicians, onRefre
             </tbody>
           </table>
         </div>
+        <TablePagination
+          className="hidden md:flex"
+          page={page}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          itemLabel="筆"
+        />
       </Card>
 
       <PaymentOrderCreateDialog
