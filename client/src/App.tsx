@@ -1079,7 +1079,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 pt-20 md:pb-0 md:pt-0 md:pl-56">
+    <div className="min-h-screen overflow-x-hidden bg-slate-50 pb-24 pt-20 md:pb-0 md:pt-0 md:pl-56">
       <Toaster position="top-center" />
 
       {/* 自定义登出确认弹窗，替代原生 window.confirm */}
@@ -1219,7 +1219,7 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white px-2 py-2 shadow-[0_-8px_30px_rgba(15,23,42,0.06)] md:hidden">
+          <nav className="fixed bottom-0 left-0 right-0 z-50 w-screen max-w-full border-t border-slate-200 bg-white px-2 py-2 shadow-[0_-8px_30px_rgba(15,23,42,0.06)] md:hidden">
             <div className="flex items-stretch justify-between gap-1">
               {ADMIN_MOBILE_PRIMARY_NAV.map(item => (
                 <button
@@ -1240,7 +1240,7 @@ export default function App() {
             </div>
           </nav>
 
-          <nav className="fixed bottom-0 left-0 right-0 hidden bg-white border-t border-slate-200 px-4 py-2 justify-around items-center z-50 md:top-0 md:bottom-0 md:left-0 md:w-56 md:flex-col md:justify-start md:py-5 md:px-3 md:border-r md:border-t-0 md:shadow-sm">
+          <nav className="fixed bottom-0 left-0 right-0 hidden bg-white border-t border-slate-200 px-4 py-2 justify-around items-center z-50 md:top-0 md:bottom-0 md:left-0 md:flex md:w-56 md:flex-col md:justify-start md:py-5 md:px-3 md:border-r md:border-t-0 md:shadow-sm">
             <div className="hidden md:flex items-center gap-2.5 mb-8 px-3">
               <div className="w-8 h-8 bg-blue-600 rounded-md flex items-center justify-center">
                 <Package className="text-white w-4.5 h-4.5" />

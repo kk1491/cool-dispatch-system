@@ -35,6 +35,28 @@ type HeatLayerFactory = typeof L & {
   ) => L.Layer;
 };
 
+// applyLeafletPaneZIndex 统一压低 Leaflet 各层级，确保移动端固定底部导航始终位于地图之上。
+function applyLeafletPaneZIndex(map: L.Map) {
+  const paneZIndexMap: Array<[string, string]> = [
+    ['tilePane', '1'],
+    ['overlayPane', '5'],
+    ['shadowPane', '8'],
+    ['markerPane', '10'],
+    ['tooltipPane', '20'],
+    ['popupPane', '30'],
+  ];
+
+  paneZIndexMap.forEach(([paneName, zIndex]) => {
+    const pane = map.getPane(paneName);
+    if (pane) {
+      pane.style.zIndex = zIndex;
+    }
+  });
+
+  const container = map.getContainer();
+  container.style.zIndex = '0';
+}
+
 export default function HeatMap({ appointments }: HeatMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -91,6 +113,7 @@ export default function HeatMap({ appointments }: HeatMapProps) {
       attribution: '&copy; OpenStreetMap contributors',
       maxZoom: 18,
     }).addTo(map);
+    applyLeafletPaneZIndex(map);
 
     mapInstanceRef.current = map;
     markersRef.current = L.layerGroup().addTo(map);
@@ -250,13 +273,13 @@ export default function HeatMap({ appointments }: HeatMapProps) {
         </Card>
       </div>
 
-      <div className="relative">
-        <Card className="overflow-hidden">
-          <div ref={mapRef} className="w-full h-[500px] md:h-[600px]" data-testid="heatmap-container" />
+      <div className="relative z-0">
+        <Card className="relative z-0 overflow-hidden">
+          <div ref={mapRef} className="relative z-0 w-full h-[500px] md:h-[600px]" data-testid="heatmap-container" />
         </Card>
 
         {selectedDistrict && selectedDistrictData && (
-          <div className="absolute top-4 right-4 z-[1000] w-80">
+          <div className="absolute top-4 right-4 z-30 w-80 max-w-[calc(100%-2rem)]">
             <Card className="p-4 bg-white/95 backdrop-blur-sm shadow-lg">
               <div className="flex justify-between items-center mb-3">
                 <div className="flex items-center gap-2">
